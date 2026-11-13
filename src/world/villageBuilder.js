@@ -36,6 +36,7 @@ export class VillageBuilder {
     this.indoorZones = [];
     this.waypoints = []; // { id, x, y, z, neighbors: [] }
     this.squadSpawns = []; // 12 distributed tactical spawns across houses, 5-story tower & alleys
+    this.medkits = []; // Interactive walkable healing stations
   }
 
   async build() {
@@ -144,7 +145,7 @@ export class VillageBuilder {
     ];
     const walkMesh = new THREE.Mesh(mergeGeometries(walkGeos, false), this.mats.concrete);
     walkMesh.receiveShadow = true;
-    walkMesh.castShadow = true;
+    walkMesh.castShadow = false;
     this.scene.add(walkMesh);
 
     // Worn faded road centerline stripes
@@ -637,15 +638,11 @@ export class VillageBuilder {
       ammoGltf,
       lampGltf,
       tyreGltf,
-      propaneGltf,
       genGltf,
       tableGltf,
-      chairGltf,
-      utilGltf,
       jerryGltf,
       medGltf,
       shutterGltf,
-      trashGltf,
     ] = await Promise.all([
       this.assets.loadModel('wreck_pickup'),
       this.assets.loadModel('wreck_sedan'),
@@ -656,19 +653,15 @@ export class VillageBuilder {
       this.assets.loadModel('ammo_box'),
       this.assets.loadModel('street_lamp'),
       this.assets.loadModel('old_tyre'),
-      this.assets.loadModel('propane_tank'),
       this.assets.loadModel('generator'),
       this.assets.loadModel('wooden_table'),
-      this.assets.loadModel('chair'),
-      this.assets.loadModel('utility_box'),
       this.assets.loadModel('jerrycan'),
       this.assets.loadModel('medical_box'),
       this.assets.loadModel('rollershutter'),
-      this.assets.loadModel('trashbag'),
     ]);
 
     const placeProp = (gltf, pos, rotY, scale = 1.0, physMat = 'concrete', opts = {}) => {
-      const { dynamic = false, mass = 16, collide = true, cullDist = 48, castShadow = false, tiny = false } = opts;
+      const { dynamic = false, mass = 16, collide = true, cullDist = 42, castShadow = false, tiny = false } = opts;
       const clone = gltf.scene.clone(true);
       clone.traverse((o) => {
         if (o.isMesh) o.castShadow = castShadow;
@@ -711,7 +704,7 @@ export class VillageBuilder {
         );
         gLow.position.y = size.y * 0.45;
         lod.addLevel(gLow, cullDist);
-        if (cullDist < 50) lod.addLevel(new THREE.Group(), 76);
+        if (cullDist < 48) lod.addLevel(new THREE.Group(), 72);
       }
       this.scene.add(lod);
       this.lodObjects.push(lod);
@@ -726,60 +719,47 @@ export class VillageBuilder {
       }
     };
 
-    // Street Vehicle Wrecks (burnt pickups, sedans, tarp-covered cars — cast hero street shadows)
-    placeProp(pickupGltf, { x: -2.2, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 50, castShadow: true });
-    placeProp(sedanGltf, { x: 2.5, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 50, castShadow: true });
-    placeProp(carGltf, { x: -2.0, y: 0.03, z: -17.5 }, 1.18, 0.96, 'metal', { cullDist: 50, castShadow: true });
-    placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 50, castShadow: false });
+    // Street Vehicle Wrecks (burnt pickups, sedans, tarp-covered cars — hero street shadows)
+    placeProp(pickupGltf, { x: -2.2, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 46, castShadow: true });
+    placeProp(sedanGltf, { x: 2.5, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 46, castShadow: true });
+    placeProp(carGltf, { x: -2.0, y: 0.03, z: -17.5 }, 1.18, 0.96, 'metal', { cullDist: 46, castShadow: false });
+    placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 46, castShadow: false });
 
-    // Road Barriers (Jersey concrete blocks)
+    // Road Barriers (Jersey concrete blocks — castShadow false for big FPS boost on mobile!)
     [
-      { x: 2.6, z: 25.0, ry: 0.16, sh: true },
-      { x: -3.3, z: 3.5, ry: -0.2, sh: true },
-      { x: 2.8, z: -13.5, ry: 0.1, sh: false },
-      { x: -3.2, z: -25.0, ry: 0.08, sh: false },
-      { x: 3.2, z: -25.0, ry: -0.1, sh: false },
-    ].forEach((b) => placeProp(barrierGltf, { x: b.x, y: 0.03, z: b.z }, b.ry, 0.95, 'concrete', { cullDist: 44, castShadow: b.sh }));
+      { x: 2.6, z: 25.0, ry: 0.16 },
+      { x: -3.3, z: 3.5, ry: -0.2 },
+      { x: 2.8, z: -13.5, ry: 0.1 },
+      { x: -3.2, z: -25.0, ry: 0.08 },
+      { x: 3.2, z: -25.0, ry: -0.1 },
+    ].forEach((b) => placeProp(barrierGltf, { x: b.x, y: 0.03, z: b.z }, b.ry, 0.95, 'concrete', { cullDist: 40, castShadow: false }));
 
     // Street Lamps lining sidewalks along main avenue
     for (let z = -22; z <= 28; z += 16) {
-      placeProp(lampGltf, { x: -4.85, y: 0.1, z }, Math.PI / 2, 1.0, 'metal', { cullDist: 46, castShadow: z > 0 });
-      placeProp(lampGltf, { x: 4.85, y: 0.1, z: z - 6 }, -Math.PI / 2, 1.0, 'metal', { cullDist: 46, castShadow: z > 0 });
+      placeProp(lampGltf, { x: -4.85, y: 0.1, z }, Math.PI / 2, 1.0, 'metal', { cullDist: 38, castShadow: false });
+      placeProp(lampGltf, { x: 4.85, y: 0.1, z: z - 6 }, -Math.PI / 2, 1.0, 'metal', { cullDist: 38, castShadow: false });
     }
 
-    // Exterior Utility Boxes, Generators, Shutters, Old Tyres, Propane Tanks, Trash Bags
-    placeProp(utilGltf, { x: -7.1, y: 0.2, z: 20.5 }, Math.PI / 2, 1.0, 'metal', { cullDist: 32, tiny: true });
-    placeProp(utilGltf, { x: 7.2, y: 0.2, z: 14.8 }, -Math.PI / 2, 1.0, 'metal', { cullDist: 32, tiny: true });
-    placeProp(utilGltf, { x: -2.4, y: 0.2, z: -28.0 }, 0, 1.0, 'metal', { cullDist: 32, tiny: true });
-
     // Garage shutters on House 2 & House 4
-    placeProp(shutterGltf, { x: -12.2, y: 0.2, z: 3.9 }, 0, 0.95, 'metal', { collide: false, cullDist: 40 });
-    placeProp(shutterGltf, { x: -12.5, y: 0.2, z: -12.1 }, 0, 0.9, 'metal', { collide: false, cullDist: 40 });
+    placeProp(shutterGltf, { x: -12.2, y: 0.2, z: 3.9 }, 0, 0.95, 'metal', { collide: false, cullDist: 36 });
+    placeProp(shutterGltf, { x: -12.5, y: 0.2, z: -12.1 }, 0, 0.9, 'metal', { collide: false, cullDist: 36 });
 
-    // Tyre Barricades & Corner Clusters (tight cull so distant tyres never waste tris)
+    // Tyre Barricades & Corner Clusters
     [
       { x: 3.8, z: 24.4 }, { x: 4.3, z: 23.9 }, { x: -4.4, z: 11.4 },
       { x: 3.8, z: -12.6 }, { x: -4.3, z: -26.5 }, { x: 7.4, z: 5.5 },
     ].forEach((p, idx) =>
-      placeProp(tyreGltf, { x: p.x, y: 0.03, z: p.z }, idx * 0.8, 1.0, 'dirt', { dynamic: false, collide: false, cullDist: 28, tiny: true })
+      placeProp(tyreGltf, { x: p.x, y: 0.03, z: p.z }, idx * 0.8, 1.0, 'dirt', { dynamic: false, collide: false, cullDist: 26, tiny: true })
     );
 
-    // Trash bags along alleys & house steps
-    [
-      { x: -6.8, z: 15.2 }, { x: 6.8, z: 18.8 }, { x: -6.9, z: -2.8 },
-      { x: 6.9, z: -3.8 }, { x: -4.8, z: -28.0 }, { x: 5.4, z: -28.0 },
-    ].forEach((p, idx) => placeProp(trashGltf, { x: p.x, y: 0.1, z: p.z }, idx * 1.1, 1.0, 'dirt', { collide: false, cullDist: 26, tiny: true }));
-
-    // Generators, Propane Tanks, Jerrycans (garage/courtyard/interior flavor)
-    placeProp(genGltf, { x: -10.5, y: 0.2, z: -1.6 }, 0.4, 1.0, 'metal', { cullDist: 32 });
-    placeProp(genGltf, { x: 4.8, y: 0.2, z: -29.8 }, -0.5, 1.0, 'metal', { cullDist: 32 });
-    placeProp(propaneGltf, { x: -14.2, y: 0.2, z: 1.5 }, 0, 1.0, 'metal', { cullDist: 28, tiny: true });
-    placeProp(propaneGltf, { x: 10.6, y: 0.2, z: -3.2 }, 0.3, 1.0, 'metal', { cullDist: 28, tiny: true });
+    // Generators & Jerrycans
+    placeProp(genGltf, { x: -10.5, y: 0.2, z: -1.6 }, 0.4, 1.0, 'metal', { cullDist: 28, tiny: true });
+    placeProp(genGltf, { x: 4.8, y: 0.2, z: -29.8 }, -0.5, 1.0, 'metal', { cullDist: 28, tiny: true });
     placeProp(jerryGltf, { x: -13.6, y: 0.2, z: 1.8 }, 0.6, 1.0, 'metal', { dynamic: true, mass: 10 });
     placeProp(jerryGltf, { x: -4.4, y: 0.2, z: -34.2 }, -0.4, 1.0, 'metal', { dynamic: true, mass: 10 });
 
-    // Interior Furniture & Supplies inside houses + 5-story apartment floors (tables, chairs, med boxes, crates, barrels)
-    const tablesAndChairs = [
+    // Interior Wooden Tables inside houses & tower
+    const tables = [
       { x: -13.5, y: 0.2, z: 19.6, ry: 0.1 },
       { x: 13.4, y: 0.2, z: 16.0, ry: -0.2 },
       { x: 13.0, y: 3.3, z: -1.8, ry: 0.4 },
@@ -788,12 +768,46 @@ export class VillageBuilder {
       { x: -3.0, y: 6.4, z: -33.2, ry: 0.2 },
       { x: -2.8, y: 12.6, z: -32.2, ry: -0.2 },
     ];
-    tablesAndChairs.forEach((tc, i) => {
-      placeProp(tableGltf, { x: tc.x, y: tc.y, z: tc.z }, tc.ry, 1.0, 'wood', { cullDist: 28, tiny: true });
-      placeProp(chairGltf, { x: tc.x + 0.85, y: tc.y, z: tc.z + 0.2 }, tc.ry + 1.8, 1.0, 'wood', { collide: false, cullDist: 26, tiny: true });
-      if (i % 2 === 0) {
-        placeProp(medGltf, { x: tc.x, y: tc.y + 0.81, z: tc.z }, 0.4, 1.0, 'metal', { collide: false, cullDist: 24, tiny: true });
-      }
+    tables.forEach((tc) => {
+      placeProp(tableGltf, { x: tc.x, y: tc.y, z: tc.z }, tc.ry, 1.0, 'wood', { cullDist: 26, tiny: true });
+    });
+
+    // Interactive Walkable Medkit Pickups (+35 HP each!) at tactical cover & building interiors
+    const medCrossMat = new THREE.MeshBasicMaterial({ color: 0x62e874 });
+    const crossHGeo = new THREE.BoxGeometry(0.18, 0.03, 0.055);
+    const crossVGeo = new THREE.BoxGeometry(0.055, 0.03, 0.18);
+    const medSpots = [
+      { x: 2.2, y: 0.14, z: 22.8 },    // Behind south checkpoint road barrier
+      { x: -12.0, y: 0.30, z: 16.4 },  // House 0 F1 interior
+      { x: 12.0, y: 0.30, z: 16.8 },   // House 1 F1 interior
+      { x: -8.6, y: 0.14, z: 8.6 },    // West cross-alley cover
+      { x: 12.0, y: 0.30, z: -14.8 },  // House 5 F1 interior
+      { x: -2.6, y: 0.30, z: -32.8 },  // 5-Story Tower Lobby
+      { x: -2.6, y: 6.50, z: -32.2 },  // 5-Story Tower Floor 3
+    ];
+    medSpots.forEach((sp, idx) => {
+      const grp = new THREE.Group();
+      const mClone = medGltf.scene.clone(true);
+      mClone.scale.setScalar(1.15);
+      const bx = new THREE.Box3().setFromObject(mClone);
+      const bc = new THREE.Vector3();
+      bx.getCenter(bc);
+      mClone.position.set(-bc.x, -bx.min.y, -bc.z);
+      const ch = new THREE.Mesh(crossHGeo, medCrossMat);
+      ch.position.y = (bx.max.y - bx.min.y) + 0.04;
+      const cv = new THREE.Mesh(crossVGeo, medCrossMat);
+      cv.position.y = (bx.max.y - bx.min.y) + 0.04;
+      grp.add(mClone, ch, cv);
+      grp.position.set(sp.x, sp.y, sp.z);
+      this.scene.add(grp);
+      this.medkits.push({
+        id: idx,
+        mesh: grp,
+        baseY: sp.y,
+        pos: new THREE.Vector3(sp.x, sp.y, sp.z),
+        active: true,
+        phase: idx * 0.9,
+      });
     });
 
     // Dynamic physics crates & barrels reacting to bullets!
@@ -809,6 +823,37 @@ export class VillageBuilder {
     ].forEach((dp) => placeProp(dp.g, { x: dp.x, y: dp.y, z: dp.z }, 0, dp.s, dp.m, { dynamic: true }));
   }
 
+  resetMedkits() {
+    for (const mk of this.medkits) {
+      mk.active = true;
+      mk.mesh.visible = true;
+    }
+  }
+
+  updateMedkits(dt, playerFeetPos, player) {
+    let healedAmount = 0;
+    for (const mk of this.medkits) {
+      if (!mk.active) continue;
+      mk.phase += dt * 2.2;
+      mk.mesh.rotation.y += dt * 1.1;
+      mk.mesh.position.y = mk.baseY + Math.sin(mk.phase) * 0.04;
+      if (player.health < player.maxHealth) {
+        const dx = playerFeetPos.x - mk.pos.x;
+        const dy = Math.abs(playerFeetPos.y - mk.pos.y);
+        const dz = playerFeetPos.z - mk.pos.z;
+        if (dx * dx + dz * dz < 1.65 * 1.65 && dy < 1.8) {
+          const prev = player.health;
+          player.health = Math.min(player.maxHealth, player.health + 35);
+          healedAmount = Math.round(player.health - prev);
+          mk.active = false;
+          mk.mesh.visible = false;
+          break;
+        }
+      }
+    }
+    return healedAmount;
+  }
+
   async _buildFoliageAndUtilityLines() {
     const [tree1, tree2, bushGltf] = await Promise.all([
       this.assets.loadModel('dead_tree1'),
@@ -816,7 +861,6 @@ export class VillageBuilder {
       this.assets.loadModel('bush'),
     ]);
 
-    // Dead gnarled trees & low-poly LOD stand-ins (zero medieval cottages!)
     const treeSpots = [
       { x: -20, z: 24 }, { x: 20, z: 22 },
       { x: -20.5, z: -6 }, { x: 20.5, z: -9 },
@@ -828,7 +872,7 @@ export class VillageBuilder {
       const src = idx % 2 === 0 ? tree1 : tree2;
       const clone = src.scene.clone(true);
       clone.traverse((o) => {
-        if (o.isMesh) o.castShadow = true;
+        if (o.isMesh) o.castShadow = false;
       });
       clone.scale.setScalar(1.38);
       const lod = new THREE.LOD();
@@ -837,7 +881,7 @@ export class VillageBuilder {
       const bb = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 6.2), billboardMat);
       bb.position.y = 3.1;
       lod.addLevel(clone, 0);
-      lod.addLevel(bb, 46);
+      lod.addLevel(bb, 42);
       this.scene.add(lod);
       this.lodObjects.push(lod);
 
@@ -848,7 +892,6 @@ export class VillageBuilder {
       });
     });
 
-    // Dry semi-arid wild bushes around yards & alleys (alphaTest leaf cutout so no black self-shadow artifacts!)
     const bushSpots = [
       { x: -8.0, z: 25.5 }, { x: 8.2, z: 24.8 },
       { x: -17.8, z: 12.5 }, { x: 17.8, z: 11.2 },
@@ -872,12 +915,12 @@ export class VillageBuilder {
       lod.position.set(sp.x, 0, sp.z);
       lod.rotation.y = i * 0.9;
       lod.addLevel(clone, 0);
-      lod.addLevel(new THREE.Group(), 30);
+      lod.addLevel(new THREE.Group(), 26);
       this.scene.add(lod);
       this.lodObjects.push(lod);
     });
 
-    // Timber Telegraph Poles + Overhead Wires along the street (adds authentic verticality!)
+    // Timber Telegraph Poles + Overhead Wires along the street
     const poleGeos = [];
     const poleXs = [-5.2, 5.2];
     for (const px of poleXs) {
@@ -889,7 +932,7 @@ export class VillageBuilder {
       poleGeos.push(makeBoxGeo(0.03, 0.03, 46, px + 0.45, 6.3, 3));
     }
     const poles = new THREE.Mesh(mergeGeometries(poleGeos, false), this.mats.wood);
-    poles.castShadow = true;
+    poles.castShadow = false;
     poles.receiveShadow = true;
     this.scene.add(poles);
 
@@ -999,8 +1042,8 @@ export class VillageBuilder {
 
     // 12 Well-Separated Tactical Spawns across Outdoor Cover, 2-Story Houses & 5-Story Tower!
     this.squadSpawns = [
-      { pos: { x: -3.4, y: 0.15, z: 10.5 }, isOutdoor: true, patrol: [1, 2, 8] },      // 0: South Avenue Checkpoint
-      { pos: { x: 8.6, y: 0.15, z: 7.6 }, isOutdoor: true, patrol: [2, 9, 3] },        // 1: East Cross-Alley Patrol
+      { pos: { x: -3.8, y: 0.15, z: 9.0 }, isOutdoor: true, patrol: [2, 8, 9] },       // 0: Mid-Avenue Pickup Cover
+      { pos: { x: 11.4, y: 0.15, z: 7.6 }, isOutdoor: true, patrol: [9, 2, 3] },       // 1: East Cross-Alley Patrol
       { pos: { x: -4.8, y: 0.15, z: -22.5 }, isOutdoor: true, patrol: [5, 6, 7] },     // 2: North Plaza Patrol
       { pos: { x: -13.0, y: 0.25, z: 18.2 }, isOutdoor: false, patrol: [11, 10] },     // 3: House 0 Floor 1
       { pos: { x: -13.2, y: 3.35, z: 17.5 }, isOutdoor: false, patrol: [12] },         // 4: House 0 Floor 2 Overlook

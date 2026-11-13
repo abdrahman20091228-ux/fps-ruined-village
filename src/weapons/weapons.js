@@ -9,69 +9,116 @@ export const WEAPON_DEFS = {
     damage: 28,
     magSize: 15,
     reserveMax: 90,
-    reloadTime: 1.35,
+    reloadTime: 1.3,
     penetration: 0.28,
-    adsFov: 62,
+    adsFov: 60,
     spreadBase: 0.004,
     spreadMove: 0.015,
     recoilPattern: [
-      { p: 0.026, y: 0.004 },
-      { p: 0.029, y: -0.005 },
-      { p: 0.032, y: 0.006 },
+      { p: 0.024, y: 0.004 },
+      { p: 0.027, y: -0.005 },
+      { p: 0.030, y: 0.006 },
     ],
-    hipPos: new THREE.Vector3(0.22, -0.21, -0.38),
-    adsPos: new THREE.Vector3(0.0, -0.135, -0.32),
+    hipPos: new THREE.Vector3(0.082, -0.015, -0.085),
+    adsPos: new THREE.Vector3(0.0, 0.007, -0.072),
+    muzzleLocal: new THREE.Vector3(0, -0.025, -0.36),
+    ejectLocal: new THREE.Vector3(0.02, -0.02, -0.22),
   },
   akm: {
     id: 'akm',
     name: 'AKM 7.62',
     auto: true,
     rpm: 600,
-    damage: 37,
+    damage: 38,
     magSize: 30,
     reserveMax: 120,
-    reloadTime: 2.05,
+    reloadTime: 1.95,
     penetration: 0.65,
-    adsFov: 54,
+    adsFov: 52,
     spreadBase: 0.005,
     spreadMove: 0.024,
     recoilPattern: [
-      { p: 0.028, y: 0.003 },
-      { p: 0.034, y: 0.008 },
-      { p: 0.038, y: -0.007 },
-      { p: 0.041, y: 0.012 },
-      { p: 0.036, y: -0.013 },
-      { p: 0.042, y: 0.015 },
+      { p: 0.026, y: 0.003 },
+      { p: 0.032, y: 0.007 },
+      { p: 0.035, y: -0.006 },
+      { p: 0.038, y: 0.010 },
+      { p: 0.034, y: -0.011 },
+      { p: 0.039, y: 0.013 },
     ],
-    hipPos: new THREE.Vector3(0.175, -0.155, -0.35),
-    adsPos: new THREE.Vector3(0.0, -0.095, -0.26),
+    hipPos: new THREE.Vector3(0.112, -0.072, -0.06),
+    adsPos: new THREE.Vector3(0.0, -0.062, -0.045),
+    muzzleLocal: new THREE.Vector3(0, 0.015, -0.74),
+    ejectLocal: new THREE.Vector3(0.03, 0.0, -0.14),
   },
   m4: {
     id: 'm4',
-    name: 'M4 CARBINE',
+    name: 'M4 HOLO',
     auto: true,
     rpm: 760,
-    damage: 30,
+    damage: 31,
     magSize: 30,
     reserveMax: 150,
-    reloadTime: 1.65,
+    reloadTime: 1.55,
     penetration: 0.52,
-    adsFov: 52,
+    adsFov: 50,
     spreadBase: 0.003,
-    spreadMove: 0.018,
+    spreadMove: 0.017,
     recoilPattern: [
-      { p: 0.019, y: 0.002 },
-      { p: 0.022, y: -0.004 },
-      { p: 0.025, y: 0.006 },
-      { p: 0.024, y: -0.006 },
-      { p: 0.027, y: 0.005 },
+      { p: 0.018, y: 0.002 },
+      { p: 0.021, y: -0.004 },
+      { p: 0.024, y: 0.005 },
+      { p: 0.022, y: -0.005 },
+      { p: 0.025, y: 0.004 },
     ],
-    hipPos: new THREE.Vector3(0.175, -0.15, -0.34),
-    adsPos: new THREE.Vector3(0.0, -0.095, -0.26),
+    hipPos: new THREE.Vector3(0.105, -0.052, -0.05),
+    adsPos: new THREE.Vector3(0.0, 0.014, -0.045),
+    muzzleLocal: new THREE.Vector3(0, -0.08, -0.65),
+    ejectLocal: new THREE.Vector3(0.03, -0.06, -0.22),
   },
 };
 
 const ORDER = ['m4', 'akm', 'pistol'];
+
+function createHoloOptic() {
+  const grp = new THREE.Group();
+  const housingMat = new THREE.MeshStandardMaterial({ color: 0x262a2f, roughness: 0.42, metalness: 0.55 });
+  // Low-profile Picatinny riser + open EOTech reflex window clearly above the M4 rear iron sight!
+  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.016, 0.068), housingMat);
+  riser.position.set(0, -0.010, 0);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.007, 0.072), housingMat);
+  base.position.set(0, 0.001, 0);
+
+  const leftPost = new THREE.Mesh(new THREE.BoxGeometry(0.0035, 0.028, 0.034), housingMat);
+  leftPost.position.set(-0.0185, 0.018, -0.002);
+  const rightPost = new THREE.Mesh(new THREE.BoxGeometry(0.0035, 0.028, 0.034), housingMat);
+  rightPost.position.set(0.0185, 0.018, -0.002);
+  const hoodTop = new THREE.Mesh(new THREE.BoxGeometry(0.0405, 0.0035, 0.036), housingMat);
+  hoodTop.position.set(0, 0.032, -0.002);
+
+  const glass = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.034, 0.025),
+    new THREE.MeshBasicMaterial({ color: 0x62b8c9, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false })
+  );
+  glass.position.set(0, 0.018, -0.002);
+
+  // Sharp glowing holographic red dot + outer tactical ring centered at y = -0.014 in weapon space
+  const reticle = new THREE.Mesh(
+    new THREE.SphereGeometry(0.0011, 8, 8),
+    new THREE.MeshBasicMaterial({ color: 0xff3b2f })
+  );
+  reticle.position.set(0, 0.018, -0.004);
+
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.0046, 0.0056, 18),
+    new THREE.MeshBasicMaterial({ color: 0xff4c3d, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false })
+  );
+  ring.position.set(0, 0.018, -0.004);
+
+  grp.add(riser, base, leftPost, rightPost, hoodTop, glass, reticle, ring);
+  // Placed over forward receiver rail (-0.155) cleanly ahead of the built-in rear sight hump!
+  grp.position.set(0, -0.032, -0.155);
+  return grp;
+}
 
 export class WeaponSystem {
   constructor(camera, physics, effects, audio) {
@@ -81,9 +128,14 @@ export class WeaponSystem {
     this.audio = audio;
 
     this.viewmodelRoot = new THREE.Group();
+    this.viewmodelRoot.visible = false; // Hidden on load/menu until actively playing!
     this.camera.add(this.viewmodelRoot);
 
     this.weaponMeshes = {};
+    this.weaponMags = {};
+    this.fallbackRoot = new THREE.Group();
+    this.viewmodelRoot.add(this.fallbackRoot);
+
     this.muzzleFlashSprite = null;
     this.state = {
       pistol: { mag: 15, reserve: 90 },
@@ -95,8 +147,10 @@ export class WeaponSystem {
     this.fireTimer = 0;
     this.reloadTimer = 0;
     this.isReloading = false;
+    this.drawTimer = 0;
     this.shotIndex = 0;
     this.adsBlend = 0;
+    this.sprintBlend = 0;
     this.kickZ = 0;
     this.kickRotX = 0;
     this._triggerHeld = false;
@@ -111,6 +165,10 @@ export class WeaponSystem {
 
     this._buildDefaultViewmodels();
     this.equip(ORDER[this.currentIndex]);
+  }
+
+  setVisible(visible) {
+    this.viewmodelRoot.visible = !!visible;
   }
 
   get activeDef() {
@@ -131,131 +189,101 @@ export class WeaponSystem {
     this.isReloading = false;
     this.reloadTimer = 0;
     this.fireTimer = 0;
+    this.adsBlend = 0;
+    this.sprintBlend = 0;
     this.recoilPitch = 0;
     this.recoilYaw = 0;
+    this.recoilVelP = 0;
+    this.recoilVelY = 0;
     this.equip(ORDER[0]);
   }
 
   _buildDefaultViewmodels() {
-    const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x4f5546, roughness: 0.88, metalness: 0.04 });
-    const gloveMat = new THREE.MeshStandardMaterial({ color: 0x2d2f31, roughness: 0.82, metalness: 0.08 });
-    const gunmetal = new THREE.MeshStandardMaterial({ color: 0x35393e, roughness: 0.45, metalness: 0.65 });
+    const gunmetal = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.44, metalness: 0.5 });
     const woodStock = new THREE.MeshStandardMaterial({ color: 0x624127, roughness: 0.8 });
-    const polymer = new THREE.MeshStandardMaterial({ color: 0x232629, roughness: 0.68, metalness: 0.18 });
+    const polymer = new THREE.MeshStandardMaterial({ color: 0x26292d, roughness: 0.62, metalness: 0.2 });
 
-    // Tapered tactical forearms & gloved hands tucked cleanly at grip + handguard
-    const armGeo = new THREE.CylinderGeometry(0.024, 0.033, 0.32, 8);
-    armGeo.rotateX(Math.PI / 2);
-
-    const rightArm = new THREE.Mesh(armGeo, sleeveMat);
-    rightArm.position.set(0.09, -0.135, 0.22);
-    rightArm.rotation.set(0.24, -0.26, 0);
-
-    const leftArm = new THREE.Mesh(armGeo, sleeveMat);
-    leftArm.position.set(-0.20, -0.155, 0.11);
-    leftArm.rotation.set(0.22, 0.72, 0);
-
-    const handGeo = new THREE.CylinderGeometry(0.02, 0.023, 0.055, 8);
-    handGeo.rotateX(Math.PI / 2);
-    const rightHand = new THREE.Mesh(handGeo, gloveMat);
-    rightHand.position.set(0.008, -0.05, 0.055);
-    const leftHand = new THREE.Mesh(handGeo, gloveMat);
-    leftHand.position.set(-0.008, -0.032, -0.11);
-    this.viewmodelRoot.add(rightArm, leftArm, rightHand, leftHand);
-
-    // Muzzle flash sprite
+    // Muzzle flash sprite (additive warm star flare)
     const flashMat = new THREE.SpriteMaterial({
-      color: 0xffd27d,
+      color: 0xffd578,
       transparent: true,
       opacity: 0,
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     this.muzzleFlashSprite = new THREE.Sprite(flashMat);
-    this.muzzleFlashSprite.scale.set(0.16, 0.16, 1);
-    this.muzzleFlashSprite.position.set(0, 0.03, -0.44);
+    this.muzzleFlashSprite.scale.set(0.18, 0.18, 1);
+    this.muzzleFlashSprite.position.set(0, -0.05, -0.58);
     this.viewmodelRoot.add(this.muzzleFlashSprite);
 
-    // Pistol fallback geometry
-    const pistol = new THREE.Group();
-    const pSlide = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.042, 0.21), gunmetal);
-    pSlide.position.set(0, 0.02, -0.06);
-    const pGrip = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, 0.045), polymer);
-    pGrip.position.set(0, -0.04, 0.02);
-    pGrip.rotation.x = 0.22;
-    pistol.add(pSlide, pGrip);
-    this.weaponMeshes.pistol = pistol;
+    const makeFallback = (len, bodyColor) => {
+      const g = new THREE.Group();
+      const b = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.06, len), bodyColor);
+      b.position.set(0, -0.04, -len * 0.5);
+      g.add(b);
+      return g;
+    };
 
-    // AKM fallback geometry
-    const akm = new THREE.Group();
-    const akBody = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.065, 0.44), gunmetal);
-    akBody.position.set(0, 0.015, -0.12);
-    const akWood = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.055, 0.2), woodStock);
-    akWood.position.set(0, 0.01, -0.24);
-    const akMag = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.15, 0.058), gunmetal);
-    akMag.position.set(0, -0.08, -0.12);
-    akMag.rotation.x = -0.25;
-    const akBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.26, 6), gunmetal);
-    akBarrel.rotation.x = Math.PI / 2;
-    akBarrel.position.set(0, 0.025, -0.45);
-    akm.add(akBody, akWood, akMag, akBarrel);
-    this.weaponMeshes.akm = akm;
-
-    // M4 fallback geometry
-    const m4 = new THREE.Group();
-    const m4Body = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.068, 0.42), polymer);
-    m4Body.position.set(0, 0.015, -0.12);
-    const m4Rail = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.025, 0.22), gunmetal);
-    m4Rail.position.set(0, 0.055, -0.14);
-    const m4Mag = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.14, 0.055), gunmetal);
-    m4Mag.position.set(0, -0.075, -0.11);
-    const m4Barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.24, 6), gunmetal);
-    m4Barrel.rotation.x = Math.PI / 2;
-    m4Barrel.position.set(0, 0.022, -0.43);
-    m4.add(m4Body, m4Rail, m4Mag, m4Barrel);
-    this.weaponMeshes.m4 = m4;
-
-    Object.values(this.weaponMeshes).forEach((m) => this.viewmodelRoot.add(m));
+    this.weaponMeshes.pistol = makeFallback(0.22, gunmetal);
+    this.weaponMeshes.akm = makeFallback(0.55, woodStock);
+    this.weaponMeshes.m4 = makeFallback(0.50, polymer);
+    Object.values(this.weaponMeshes).forEach((m) => this.fallbackRoot.add(m));
   }
 
   attachWeaponModel(id, modelScene) {
     if (this.weaponMeshes[id]) {
+      this.fallbackRoot.remove(this.weaponMeshes[id]);
       this.viewmodelRoot.remove(this.weaponMeshes[id]);
     }
+
     const wrapper = new THREE.Group();
-    modelScene.traverse((c) => {
+    const cloned = modelScene.clone(true);
+    cloned.traverse((c) => {
       if (c.isMesh) {
         c.castShadow = false;
         c.receiveShadow = false;
         c.frustumCulled = false;
         if (c.material) {
-          c.material.roughness = Math.max(0.46, c.material.roughness ?? 0.55);
-          c.material.metalness = Math.min(0.38, c.material.metalness ?? 0.25);
-          if (c.material.emissive) c.material.emissive.setHex(0x101214);
+          c.material = c.material.clone();
+          // Ensure metallic PBR reads crisply outdoors with our procedural sky IBL
+          c.material.roughness = Math.max(0.36, c.material.roughness ?? 0.52);
+          c.material.metalness = Math.min(0.42, c.material.metalness ?? 0.25);
+          if (id !== 'akm' && c.material.name === 'M_GunMetal') {
+            c.material.color.setHex(0x4b535d);
+          }
         }
       }
     });
-    modelScene.updateMatrixWorld(true);
 
-    // Measure posed bounding box so SkinnedMesh bone orientation is respected
-    const box = new THREE.Box3().setFromObject(modelScene);
-    const size = new THREE.Vector3();
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-    const targetLen = id === 'pistol' ? 0.23 : 0.56;
-    const scale = targetLen / maxDim;
-    modelScene.scale.setScalar(scale);
-
-    // Orient longest horizontal axis toward -Z
-    if (size.x > size.z) {
-      modelScene.rotation.y = Math.PI / 2;
+    if (id === 'm4') {
+      wrapper.add(createHoloOptic());
+    } else if (id === 'pistol') {
+      // Bright green/white tritium 3-dot pistol sights aligned with slide top
+      const frontDot = new THREE.Mesh(
+        new THREE.BoxGeometry(0.0024, 0.0032, 0.004),
+        new THREE.MeshBasicMaterial({ color: 0x62ff7a })
+      );
+      frontDot.position.set(0, -0.011, -0.342);
+      const rearMat = new THREE.MeshBasicMaterial({ color: 0xf4f0e4 });
+      const rearL = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.0028, 0.003), rearMat);
+      rearL.position.set(-0.0055, -0.011, -0.175);
+      const rearR = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.0028, 0.003), rearMat);
+      rearR.position.set(0.0055, -0.011, -0.175);
+      wrapper.add(frontDot, rearL, rearR);
+    } else if (id === 'akm') {
+      const magNode = cloned.getObjectByName('Mag');
+      if (magNode) {
+        this.weaponMags.akm = { node: magNode, basePos: magNode.position.clone(), baseRot: magNode.rotation.clone() };
+      }
+      const frontGlow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.0026, 0.0065, 0.004),
+        new THREE.MeshBasicMaterial({ color: 0x7eff7a })
+      );
+      frontGlow.position.set(0, 0.068, -0.695);
+      wrapper.add(frontGlow);
     }
-    modelScene.updateMatrixWorld(true);
-    const center = new THREE.Vector3();
-    new THREE.Box3().setFromObject(modelScene).getCenter(center);
-    modelScene.position.sub(center);
-    modelScene.position.z -= targetLen * 0.14;
 
-    wrapper.add(modelScene);
+    wrapper.add(cloned);
     wrapper.visible = id === this.activeDef.id;
     this.weaponMeshes[id] = wrapper;
     this.viewmodelRoot.add(wrapper);
@@ -264,7 +292,12 @@ export class WeaponSystem {
   equip(id) {
     this.isReloading = false;
     this.reloadTimer = 0;
+    this.drawTimer = 0.24;
     this.shotIndex = 0;
+    if (this.weaponMags.akm) {
+      this.weaponMags.akm.node.position.copy(this.weaponMags.akm.basePos);
+      this.weaponMags.akm.node.rotation.copy(this.weaponMags.akm.baseRot);
+    }
     for (const [k, mesh] of Object.entries(this.weaponMeshes)) {
       mesh.visible = k === id;
     }
@@ -281,7 +314,7 @@ export class WeaponSystem {
     if (this.isReloading || st.mag >= def.magSize || st.reserve <= 0) return;
     this.isReloading = true;
     this.reloadTimer = def.reloadTime;
-    this.audio.playClip('reload', null, 0.75);
+    this.audio.playClip('reload', null, 0.78);
   }
 
   _finishReload() {
@@ -292,18 +325,20 @@ export class WeaponSystem {
     st.mag += take;
     st.reserve -= take;
     this.isReloading = false;
+    if (this.weaponMags.akm) {
+      this.weaponMags.akm.node.position.copy(this.weaponMags.akm.basePos);
+      this.weaponMags.akm.node.rotation.copy(this.weaponMags.akm.baseRot);
+    }
   }
 
   update(dt, cmd, player, onHitEnemy, onHitMarker) {
     const def = this.activeDef;
     const st = this.activeAmmo;
 
-    if (cmd.switchWeapon) {
-      this.switchNext();
-    }
-    if (cmd.reload) {
-      this.startReload();
-    }
+    if (cmd.switchWeapon) this.switchNext();
+    if (cmd.reload) this.startReload();
+
+    if (this.drawTimer > 0) this.drawTimer = Math.max(0, this.drawTimer - dt);
 
     if (this.isReloading) {
       this.reloadTimer -= dt;
@@ -315,11 +350,10 @@ export class WeaponSystem {
     if (this.fireTimer > 0) this.fireTimer -= dt;
     if (this._emptyCooldown > 0) this._emptyCooldown -= dt;
 
-    // Fire trigger logic (semi-auto vs full-auto)
     const wantsFire = cmd.fire && (!this._triggerHeld || def.auto);
     this._triggerHeld = cmd.fire;
 
-    if (wantsFire && !this.isReloading && this.fireTimer <= 0) {
+    if (wantsFire && !this.isReloading && this.drawTimer < 0.08 && this.fireTimer <= 0) {
       if (st.mag > 0) {
         this._fireOnce(player, onHitEnemy, onHitMarker);
       } else if (this._emptyCooldown <= 0) {
@@ -332,8 +366,8 @@ export class WeaponSystem {
     }
 
     // Spring-based camera recoil recovery
-    const stiffness = 65;
-    const damping = 14;
+    const stiffness = 68;
+    const damping = 14.5;
     this.recoilVelP += (-stiffness * this.recoilPitch - damping * this.recoilVelP) * dt;
     this.recoilVelY += (-stiffness * this.recoilYaw - damping * this.recoilVelY) * dt;
     this.recoilPitch += this.recoilVelP * dt;
@@ -341,20 +375,21 @@ export class WeaponSystem {
     player.recoilPitch = this.recoilPitch;
     player.recoilYaw = this.recoilYaw;
 
-    // Small screen shake
     if (this.shakeTime > 0) {
       this.shakeTime -= dt;
-      const amp = 0.012 * (this.shakeTime / 0.09);
+      const amp = 0.011 * (this.shakeTime / 0.09);
       player.shakeOffset.set((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp, 0);
     } else {
       player.shakeOffset.set(0, 0, 0);
     }
 
-    // Viewmodel ADS + kick + reload tilt
+    // Viewmodel ADS + Sprint + Draw + Multi-Stage Reload Animation
     const targetAds = cmd.ads && !this.isReloading ? 1 : 0;
-    this.adsBlend += (targetAds - this.adsBlend) * Math.min(1, dt * 14);
-    this.kickZ += (0 - this.kickZ) * Math.min(1, dt * 18);
-    this.kickRotX += (0 - this.kickRotX) * Math.min(1, dt * 16);
+    const targetSprint = player.isSprinting && !this.isReloading && !cmd.ads ? 1 : 0;
+    this.adsBlend += (targetAds - this.adsBlend) * Math.min(1, dt * 15);
+    this.sprintBlend += (targetSprint - this.sprintBlend) * Math.min(1, dt * 10);
+    this.kickZ += (0 - this.kickZ) * Math.min(1, dt * 20);
+    this.kickRotX += (0 - this.kickRotX) * Math.min(1, dt * 17);
 
     const targetFov = THREE.MathUtils.lerp(72, def.adsFov, this.adsBlend);
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
@@ -363,13 +398,41 @@ export class WeaponSystem {
     }
 
     const pos = new THREE.Vector3().lerpVectors(def.hipPos, def.adsPos, this.adsBlend);
-    const sway = Math.sin(player.bobPhase) * (player.isSprinting ? 0.014 : 0.004) * (1 - this.adsBlend * 0.7);
-    this.viewmodelRoot.position.set(pos.x + sway, pos.y - Math.abs(sway) * 0.5 - (this.isReloading ? 0.12 : 0), pos.z + this.kickZ);
-    this.viewmodelRoot.rotation.set(this.kickRotX - (this.isReloading ? 0.45 : 0), 0, this.isReloading ? 0.35 : 0);
+    const sway = Math.sin(player.bobPhase) * (player.isSprinting ? 0.014 : 0.004) * (1 - this.adsBlend * 0.78);
+    const swayY = Math.abs(Math.cos(player.bobPhase)) * (player.isSprinting ? 0.012 : 0.003) * (1 - this.adsBlend * 0.78);
+    const drawDrop = (this.drawTimer / 0.24) * 0.16;
 
-    // Muzzle sprite fade
+    // Multi-stage reload motion curve + AKM detachable mag pull!
+    let rDrop = 0;
+    let rRotX = 0;
+    let rRotZ = 0;
+    if (this.isReloading) {
+      const p = 1 - Math.max(0, this.reloadTimer / def.reloadTime);
+      const lift = Math.sin(p * Math.PI);
+      rDrop = lift * 0.08;
+      rRotX = -0.32 * lift;
+      rRotZ = 0.46 * lift;
+      if (def.id === 'akm' && this.weaponMags.akm) {
+        const magPull = p < 0.5 ? p * 2 : (1 - p) * 2;
+        const mag = this.weaponMags.akm;
+        mag.node.position.set(mag.basePos.x, mag.basePos.y - magPull * 0.22, mag.basePos.z + magPull * 0.06);
+        mag.node.rotation.x = mag.baseRot.x + magPull * 0.35;
+      }
+    }
+
+    this.viewmodelRoot.position.set(
+      pos.x + sway + this.sprintBlend * -0.04,
+      pos.y - swayY - drawDrop - rDrop - this.sprintBlend * 0.045,
+      pos.z + this.kickZ + this.sprintBlend * 0.03
+    );
+    this.viewmodelRoot.rotation.set(
+      this.kickRotX + rRotX - drawDrop * 1.4 - this.sprintBlend * 0.22,
+      this.sprintBlend * 0.36,
+      rRotZ + this.sprintBlend * 0.28
+    );
+
     if (this.muzzleFlashSprite.material.opacity > 0) {
-      this.muzzleFlashSprite.material.opacity = Math.max(0, this.muzzleFlashSprite.material.opacity - dt * 22);
+      this.muzzleFlashSprite.material.opacity = Math.max(0, this.muzzleFlashSprite.material.opacity - dt * 26);
     }
   }
 
@@ -379,32 +442,32 @@ export class WeaponSystem {
     st.mag--;
     this.fireTimer = 60 / def.rpm;
 
-    // Recoil pattern kick
     const pat = def.recoilPattern[Math.floor(this.shotIndex) % def.recoilPattern.length];
     this.shotIndex++;
-    const adsScale = 1 - this.adsBlend * 0.35;
+    const adsScale = 1 - this.adsBlend * 0.38;
     this.recoilPitch += pat.p * adsScale;
     this.recoilYaw += pat.y * adsScale;
-    this.kickZ = 0.055;
-    this.kickRotX = 0.11;
-    this.shakeTime = 0.09;
+    this.kickZ = 0.048;
+    this.kickRotX = 0.095;
+    this.shakeTime = 0.085;
 
-    // Muzzle flash + casing + audio
-    const muzzleWorld = new THREE.Vector3(0, 0.02, -0.56).applyMatrix4(this.viewmodelRoot.matrixWorld);
-    this.muzzleFlashSprite.material.opacity = 0.95;
+    // Update muzzle sprite right at real weapon barrel tip
+    this.muzzleFlashSprite.position.copy(def.muzzleLocal).add(this.weaponMeshes[def.id].position);
+    this.muzzleFlashSprite.material.opacity = 0.96;
     this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
+
+    const muzzleWorld = def.muzzleLocal.clone().applyMatrix4(this.viewmodelRoot.matrixWorld);
     this.effects.triggerMuzzleFlash(muzzleWorld);
 
     const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
     const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
-    const ejectPos = new THREE.Vector3(0.06, -0.02, -0.22).applyMatrix4(this.viewmodelRoot.matrixWorld);
-    this.effects.spawnCasing(ejectPos, camRight, camUp);
+    const ejectWorld = def.ejectLocal.clone().applyMatrix4(this.viewmodelRoot.matrixWorld);
+    this.effects.spawnCasing(ejectWorld, camRight, camUp);
     this.audio.playShot(def.id, null, true);
 
-    // Hitscan raycast with thin wood/plaster penetration
     const origin = this.camera.position.clone();
     const dir = player.getAimDirection();
-    const spread = def.spreadBase * (1 - this.adsBlend * 0.7) + (player.isSprinting ? def.spreadMove : 0);
+    const spread = def.spreadBase * (1 - this.adsBlend * 0.75) + (player.isSprinting ? def.spreadMove : 0);
     dir.x += (Math.random() - 0.5) * spread;
     dir.y += (Math.random() - 0.5) * spread;
     dir.z += (Math.random() - 0.5) * spread;
@@ -443,7 +506,6 @@ export class WeaponSystem {
         0.55
       );
 
-      // Thin wood & plaster can be penetrated at reduced damage; concrete/metal stop bullets
       if ((mat === 'wood' || mat === 'plaster') && hit.meta?.penetrable) {
         remainingDamage *= def.penetration;
         rayOrigin = {

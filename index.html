@@ -46,7 +46,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="screen-overlay">
     <div class="loading-panel">
-      <div class="brand-badge">SECTOR 04 // RECON BUILD</div>
+      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V3</div>
       <h1 class="game-title">ASHES OF VALE</h1>
       <p class="subtitle">CLOSE-QUARTERS MULTI-STORY VILLAGE ASSAULT</p>
 
@@ -81,7 +81,7 @@
         <div class="mission-tag">OPERATION: ASHEN THRESHOLD // SINGLE PLAYER</div>
         <h1 class="menu-title">ASHES OF VALE</h1>
         <p class="menu-brief">
-          Push down the cratered main road, clear 2-story village homes and storm the 5-story ruined apartment tower. Hostiles hold rooms across every floor.
+          Sweep the paved village road, clear 2-story houses and storm all 5 floors of the ruined apartment tower. Track compass contacts &amp; collect green Medkits to survive.
         </p>
 
         <div class="menu-section">
@@ -126,11 +126,11 @@
             <span class="intel-status">READY</span>
           </div>
           <ul class="intel-list">
-            <li><span>SECTOR</span><strong>Paved Street + 7 Structures</strong></li>
-            <li><span>VERTICALITY</span><strong>2-Story Houses &amp; 5-Story Tower</strong></li>
-            <li><span>HOSTILES</span><strong>12 Armed (4 Combat Classes)</strong></li>
-            <li><span>ARSENAL</span><strong>M9 Tactical • AKM • M4 Carbine</strong></li>
-            <li><span>CONTROLS</span><strong>High-Sens Touch + Gyroscope</strong></li>
+            <li><span>OBJECTIVE</span><strong>Eliminate All 12 Hostiles</strong></li>
+            <li><span>VERTICALITY</span><strong>2-Story Homes &amp; 5-Story Tower</strong></li>
+            <li><span>HEALING</span><strong>Walk Over Green Medkits (+35 HP)</strong></li>
+            <li><span>ARSENAL</span><strong>M4 Holo • AKM • M9 Tactical</strong></li>
+            <li><span>AIMING</span><strong>Hold/Drag ADS or Fire + Gyro</strong></li>
           </ul>
           <div id="menu-cache-badge" class="cache-badge">Cache verified</div>
         </div>
@@ -149,20 +149,20 @@
       </div>
       <div class="modal-body loadout-grid">
         <div class="weapon-spec">
-          <h3>M9 TACTICAL PISTOL</h3>
-          <p>Fast draw &amp; ADS, tight close-range control, 15-round mag. Minimal penetration.</p>
+          <h3>M4 CARBINE (HOLO OPTIC)</h3>
+          <p>High cyclic fire rate, holographic reflex optic for clean ADS tracking, 30-round mag, fast reload.</p>
         </div>
         <div class="weapon-spec">
           <h3>AKM (7.62×39mm)</h3>
-          <p>High stopping power, heavy upward/right recoil kick, punches cleanly through wood &amp; plaster.</p>
+          <p>High stopping power, heavy upward kick, detachable mag, punches through wood &amp; plaster.</p>
         </div>
         <div class="weapon-spec">
-          <h3>M4 CARBINE (5.56×45mm)</h3>
-          <p>High cyclic fire rate, controllable burst recoil, fast reload for multi-floor clearing.</p>
+          <h3>M9 TACTICAL PISTOL</h3>
+          <p>Crisp 3-dot tritium sights, fast draw &amp; ADS agility, 15-round mag.</p>
         </div>
         <div class="weapon-spec">
-          <h3>TOUCH &amp; GYRO CONTROLS</h3>
-          <p>Bottom-left pad: walk &amp; strafe • Right screen or tilt device (Gyro): aim • Tap Door button to breach.</p>
+          <h3>MOBILE CONTROLS &amp; HUD</h3>
+          <p>Hold ADS &amp; drag thumb to aim while scoped, or drag while holding Fire! Customize every button in Settings.</p>
         </div>
       </div>
     </div>
@@ -179,27 +179,31 @@
       </div>
       <div class="modal-body settings-grid">
         <label class="setting-row">
-          <span>Touch Look Sensitivity <strong id="val-sensitivity">2.2</strong></span>
-          <input id="set-sensitivity" type="range" min="0.5" max="6.0" step="0.25" value="2.2" />
+          <span>Touch Look Sensitivity <strong id="val-sensitivity">2.4</strong></span>
+          <input id="set-sensitivity" type="range" min="0.5" max="6.0" step="0.25" value="2.4" />
         </label>
         <label class="setting-row">
-          <span>Gyroscope Sensitivity <strong id="val-gyro-sens">2.2</strong></span>
-          <input id="set-gyro-sens" type="range" min="0.2" max="6.0" step="0.2" value="2.2" />
+          <span>Gyroscope Sensitivity <strong id="val-gyro-sens">2.6</strong></span>
+          <input id="set-gyro-sens" type="range" min="0.4" max="6.0" step="0.2" value="2.6" />
         </label>
         <label class="setting-row setting-toggle">
           <span>Gyroscope Aiming (Motion)</span>
           <input id="set-gyro-enabled" type="checkbox" checked />
         </label>
+        <label class="setting-row setting-toggle">
+          <span>Hold ADS (Release to Exit)</span>
+          <input id="set-ads-hold" type="checkbox" checked />
+        </label>
         <label class="setting-row">
-          <span>Resolution Scale <strong id="val-res-scale">0.85</strong></span>
-          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.85" />
+          <span>Resolution Scale <strong id="val-res-scale">0.80</strong></span>
+          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.8" />
         </label>
         <label class="setting-row">
           <span>Graphics Quality</span>
           <select id="set-quality">
-            <option value="low">Low (Max Battery / 200k tris)</option>
-            <option value="medium" selected>Medium (Balanced / 320k tris)</option>
-            <option value="high">High (Sharp Shadows / 430k tris)</option>
+            <option value="low">Low (Max FPS / 180k tris)</option>
+            <option value="medium" selected>Medium (Balanced / 280k tris)</option>
+            <option value="high">High (Sharp Shadows / 400k tris)</option>
           </select>
         </label>
         <label class="setting-row">
@@ -216,23 +220,40 @@
           <input id="set-volume" type="range" min="0" max="1" step="0.05" value="0.8" />
         </label>
         <label class="setting-row">
-          <span>Button Size <strong id="val-btn-size">1.0x</strong></span>
-          <input id="set-btn-size" type="range" min="0.75" max="1.35" step="0.05" value="1.0" />
+          <span>Default Button Scale <strong id="val-btn-size">1.00x</strong></span>
+          <input id="set-btn-size" type="range" min="0.7" max="1.45" step="0.05" value="1.0" />
         </label>
         <label class="setting-row">
-          <span>Button Vertical Offset <strong id="val-btn-offset">0px</strong></span>
-          <input id="set-btn-offset" type="range" min="-40" max="40" step="5" value="0" />
+          <span>Controls Opacity <strong id="val-hud-opacity">90%</strong></span>
+          <input id="set-hud-opacity" type="range" min="0.35" max="1.0" step="0.05" value="0.9" />
         </label>
         <label class="setting-row setting-toggle">
-          <span>Show Debug Triangles</span>
+          <span>Show Debug Telemetry</span>
           <input id="set-debug" type="checkbox" checked />
         </label>
         <div class="setting-actions">
+          <button id="btn-open-hud-editor" class="btn-tactical btn-primary">CUSTOMIZE HUD BUTTONS</button>
           <button id="btn-clear-cache" class="btn-tactical">CLEAR OFFLINE CACHE</button>
           <span id="cache-clear-status" class="cache-note"></span>
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Interactive Drag & Scale HUD Layout Customizer Overlay -->
+  <div id="hud-editor-overlay" class="hud-editor hidden">
+    <div class="hud-editor-toolbar">
+      <div class="hud-editor-info">
+        <strong id="hud-editor-selected">TAP A CONTROL TO DRAG OR RESIZE</strong>
+      </div>
+      <label class="hud-editor-slider">
+        <span>SIZE <b id="val-sel-scale">1.00x</b></span>
+        <input id="hud-sel-scale" type="range" min="0.6" max="1.7" step="0.05" value="1.0" />
+      </label>
+      <button id="btn-hud-reset" class="btn-tactical">RESET</button>
+      <button id="btn-hud-save" class="btn-tactical btn-primary">SAVE &amp; CLOSE</button>
+    </div>
+    <div id="hud-editor-stage"></div>
   </div>
 
   <!-- End / Mission Result Screen -->
@@ -248,18 +269,21 @@
     </div>
   </div>
 
-  <!-- Top Telemetry Bar -->
+  <!-- In-Game HUD -->
   <div id="hud" class="hidden">
     <div id="top-telemetry">
       <div id="fps-counter">FPS: -- | Hz: --</div>
       <div id="debug-tris">TRIS: 0 / 500k</div>
     </div>
 
-    <div id="compass-bar">
-      <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><polygon points="8,1 11,9 8,7.5 5,9" fill="#c99b42"/></svg>
-      <span id="compass-dir">N 000°</span>
-      <span class="sep">|</span>
-      <span id="zone-indicator">OUTDOORS</span>
+    <div id="compass-wrapper">
+      <div id="compass-bar">
+        <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><polygon points="8,1 11,9 8,7.5 5,9" fill="#c99b42"/></svg>
+        <span id="compass-dir">N 000°</span>
+        <span class="sep">|</span>
+        <span id="zone-indicator">OUTDOORS</span>
+      </div>
+      <div id="compass-threats"></div>
     </div>
 
     <div id="objective-box">
@@ -272,6 +296,9 @@
       <svg class="hud-svg-btn" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
     </button>
 
+    <div id="mission-banner" class="hidden">ELIMINATE 12 HOSTILES — CLEAR HOUSES &amp; 5-STORY TOWER</div>
+    <div id="medkit-toast" class="hidden">+35 HP // MEDKIT</div>
+
     <!-- Center Crosshair & Hit Marker -->
     <div id="crosshair">
       <div class="ch-line ch-top"></div>
@@ -282,7 +309,13 @@
     </div>
 
     <div id="damage-vignette"></div>
-    <div id="damage-arrow" class="hidden"></div>
+    <!-- Pooled Dynamic Directional Damage Chevrons -->
+    <div id="damage-indicators">
+      <div class="dmg-arc hidden"><svg viewBox="0 0 36 22" fill="none"><path d="M4 18 L18 4 L32 18 L26 18 L18 10 L10 18 Z" fill="#ff3b30"/></svg></div>
+      <div class="dmg-arc hidden"><svg viewBox="0 0 36 22" fill="none"><path d="M4 18 L18 4 L32 18 L26 18 L18 10 L10 18 Z" fill="#ff3b30"/></svg></div>
+      <div class="dmg-arc hidden"><svg viewBox="0 0 36 22" fill="none"><path d="M4 18 L18 4 L32 18 L26 18 L18 10 L10 18 Z" fill="#ff3b30"/></svg></div>
+    </div>
+
     <div id="interact-prompt" class="hidden">DOOR // OPEN OR CLOSE</div>
 
     <!-- Bottom Status -->
@@ -292,12 +325,12 @@
     </div>
 
     <div id="hud-bottom-right">
-      <div id="weapon-name">M4 CARBINE</div>
-      <div id="ammo-display"><span id="ammo-mag">30</span> / <span id="ammo-reserve">120</span></div>
+      <div id="weapon-name">M4 HOLO</div>
+      <div id="ammo-display"><span id="ammo-mag">30</span> / <span id="ammo-reserve">150</span></div>
     </div>
   </div>
 
-  <!-- Mobile Touch Controls (Custom Luxury Tactical SVG Icons) -->
+  <!-- Mobile Touch Controls (Hold ADS + Thumb-Drag Look + Custom Layout Support) -->
   <div id="touch-controls" class="hidden">
     <div id="joystick-zone">
       <div id="joystick-base">

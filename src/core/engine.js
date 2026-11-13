@@ -15,22 +15,25 @@ export class GameEngine {
     this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.22;
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x6e777d);
-    this.scene.fog = new THREE.FogExp2(0x6e777d, 0.013);
+    this.scene.background = new THREE.Color(0x768087);
+    this.scene.fog = new THREE.FogExp2(0x768087, 0.0115);
 
-    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.08, 180);
+    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.06, 175);
     this.scene.add(this.camera);
 
-    // Fixed Art Bible Lighting Rig: single directional sun + hemisphere ambient
-    this.hemiLight = new THREE.HemisphereLight(0x9fb0bd, 0x5c5346, 0.85);
+    // Lightweight procedural dust-sky PMREM IBL so gunmetal/holo-optics/vehicles never crush to black
+    this._initEnvironmentIBL();
+
+    // Bright overcast military daylight rig: crisp hemisphere ambient + directional sun shadows
+    this.hemiLight = new THREE.HemisphereLight(0xb2c3d1, 0x665b4b, 1.0);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffe1be, 1.9);
+    this.sunLight = new THREE.DirectionalLight(0xffe5c6, 2.15);
     this.sunLight.position.set(22, 32, 14);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.camera.near = 6;
@@ -48,7 +51,8 @@ export class GameEngine {
     this.detectedHz = 60;
     this.fps = 60;
     this.triangles = 0;
-    this.autoQualityDrop = 0; // 0 = full preset, 1 = reduced draw/LOD, 2 = minimal
+    this.drawCalls = 0;
+    this.autoQualityDrop = 0;
     this._accumulator = 0;
     this._lastNow = performance.now();
     this._lastRenderNow = this._lastNow;
@@ -58,66 +62,61 @@ export class GameEngine {
     this._running = false;
     this._overBudgetFrames = 0;
 
-    this._initPostGrade();
     this.applySettings(settings);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.measureDisplayRefreshRate();
   }
 
-  _initPostGrade() {
-    this._gradeEnabled = true;
-    this._renderTarget = new THREE.WebGLRenderTarget(1, 1, {
-      type: THREE.HalfFloatType,
-      minFilter: THREE.LinearFilter,
-      magFilter: THREE.LinearFilter,
-      depthBuffer: true,
-    });
-    this._gradeScene = new THREE.Scene();
-    this._gradeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    const mat = new THREE.ShaderMaterial({
-      uniforms: {
-        tDiffuse: { value: this._renderTarget.texture },
-        uTime: { value: 0 },
-      },
-      depthTest: false,
-      depthWrite: false,
-      vertexShader: `
-        varying vec2 vUv;
-        void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform float uTime;
-        varying vec2 vUv;
-        vec3 aces(vec3 x) {
-          float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
-          return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-        }
-        void main() {
-          vec3 col = texture2D(tDiffuse, vUv).rgb * 1.05;
-          col = aces(col);
-          col = pow(col, vec3(1.0 / 2.2));
-          // Contrast 1.08 & dusty desaturation 0.88
-          col = (col - 0.5) * 1.08 + 0.5;
-          float lum = dot(col, vec3(0.299, 0.587, 0.114));
-          col = mix(vec3(lum), col, 0.88);
-          // Subtle vignette
-          vec2 d = vUv - 0.5;
-          col *= 1.0 - dot(d, d) * 0.42;
-          // Very mild 1.8% grain
-          float g = fract(sin(dot(vUv * 512.0 + uTime, vec2(12.9898, 78.233))) * 43758.5453);
-          col += (g - 0.5) * 0.018;
-          gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
-        }
-      `,
-    });
-    this._gradeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
-    this._gradeScene.add(this._gradeQuad);
+  _initEnvironmentIBL() {
+    const w = 32;
+    const h = 16;
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const v = y / (h - 1); // 0 = bottom ground, 1 = top zenith (FlipY=false data)
+      let r, g, b;
+      if (v > 0.55) {
+        // Sky zenith -> cool overcast steel blue
+        const t = (v - 0.55) / 0.45;
+        r = THREE.MathUtils.lerp(180, 145, t);
+        g = THREE.MathUtils.lerp(186, 175, t);
+        b = THREE.MathUtils.lerp(182, 204, t);
+      } else if (v > 0.44) {
+        // Warm sun horizon rim
+        r = 225; g = 208; b = 178;
+      } else {
+        // Warm sandy rubble ground bounce
+        const t = v / 0.44;
+        r = THREE.MathUtils.lerp(72, 138, t);
+        g = THREE.MathUtils.lerp(66, 126, t);
+        b = THREE.MathUtils.lerp(56, 108, t);
+      }
+      for (let x = 0; x < w; x++) {
+        const sunBump = (Math.abs(x - 20) < 4 && v > 0.52 && v < 0.72) ? 1.18 : 1.0;
+        const idx = (y * w + x) * 4;
+        data[idx] = Math.min(255, Math.round(r * sunBump));
+        data[idx + 1] = Math.min(255, Math.round(g * sunBump));
+        data[idx + 2] = Math.min(255, Math.round(b * sunBump));
+        data[idx + 3] = 255;
+      }
+    }
+    const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    pmrem.compileEquirectangularShader();
+    const envRT = pmrem.fromEquirectangular(tex);
+    this.scene.environment = envRT.texture;
+    if ('environmentIntensity' in this.scene) {
+      this.scene.environmentIntensity = 0.62;
+    }
+    tex.dispose();
+    pmrem.dispose();
   }
 
   measureDisplayRefreshRate() {
-    let samples = [];
+    const samples = [];
     let last = performance.now();
     const probe = (now) => {
       const dt = now - last;
@@ -140,9 +139,8 @@ export class GameEngine {
   applySettings(settings) {
     this.settings = settings;
     const preset = QUALITY_PRESETS[settings.quality] || QUALITY_PRESETS.medium;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2) * (settings.resolutionScale || 0.85);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * (settings.resolutionScale || 0.8);
     this.renderer.setPixelRatio(Math.max(0.5, dpr));
-    this._gradeEnabled = settings.quality !== 'low';
 
     if (this.sunLight.shadow.mapSize.width !== preset.shadowSize) {
       this.sunLight.shadow.mapSize.set(preset.shadowSize, preset.shadowSize);
@@ -162,10 +160,6 @@ export class GameEngine {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
-    if (this._renderTarget) {
-      const pr = this.renderer.getPixelRatio();
-      this._renderTarget.setSize(Math.max(1, Math.floor(w * pr)), Math.max(1, Math.floor(h * pr)));
-    }
   }
 
   updateShadowFocus(playerPos) {
@@ -187,7 +181,6 @@ export class GameEngine {
         for (const lod of lodObjects) {
           lod.traverse((child) => {
             if (child.isLOD) {
-              // Tighten LOD thresholds by scaling object scale bias via distance multiplier
               for (const lvl of child.levels) {
                 if (!lvl._origDist) lvl._origDist = lvl.distance;
                 lvl.distance = lvl._origDist * dropFactor;
@@ -195,7 +188,7 @@ export class GameEngine {
             }
           });
         }
-        this.camera.far = Math.max(55, (QUALITY_PRESETS[this.settings.quality]?.drawDist || 105) * dropFactor);
+        this.camera.far = Math.max(55, (QUALITY_PRESETS[this.settings.quality]?.drawDist || 92) * dropFactor);
         this.camera.updateProjectionMatrix();
       }
     } else {
@@ -215,14 +208,13 @@ export class GameEngine {
       if (!this._running) return;
       this._rafId = requestAnimationFrame(tick);
 
-      // Cap frame delta to avoid spiral of death after tab background
       const rawDt = Math.min(0.1, (now - this._lastNow) / 1000);
       this._lastNow = now;
       this._accumulator += rawDt;
 
       // Fixed 60 Hz physics simulation
       let steps = 0;
-      while (this._accumulator >= FIXED_DT && steps < 5) {
+      while (this._accumulator >= FIXED_DT && steps < 4) {
         onPhysicsTick(FIXED_DT);
         this._accumulator -= FIXED_DT;
         steps++;
@@ -238,21 +230,14 @@ export class GameEngine {
       this._lastRenderNow = now - (elapsedSinceRender % minFrameMs);
 
       const alpha = this._accumulator / FIXED_DT;
-      onRenderFrame(alpha, elapsedSinceRender / 1000);
+      const renderDt = Math.min(0.1, elapsedSinceRender / 1000);
+      onRenderFrame(alpha, renderDt);
 
-      // Reset renderer.info manually before render so triangles include shadow + main pass
+      // Direct backbuffer render (no costly offscreen HalfFloat RTT!) with manual stats reset
       this.renderer.info.reset();
-      if (this._gradeEnabled && this._renderTarget) {
-        this.renderer.setRenderTarget(this._renderTarget);
-        this.renderer.render(this.scene, this.camera);
-        this.triangles = this.renderer.info.render.triangles;
-        this.renderer.setRenderTarget(null);
-        this._gradeQuad.material.uniforms.uTime.value = now * 0.001;
-        this.renderer.render(this._gradeScene, this._gradeCam);
-      } else {
-        this.renderer.render(this.scene, this.camera);
-        this.triangles = this.renderer.info.render.triangles;
-      }
+      this.renderer.render(this.scene, this.camera);
+      this.triangles = this.renderer.info.render.triangles;
+      this.drawCalls = this.renderer.info.render.calls;
 
       this._fpsFrames++;
       if (now - this._fpsWindowStart >= 500) {

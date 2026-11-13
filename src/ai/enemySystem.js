@@ -5,7 +5,6 @@ import { DIFFICULTIES } from '../core/config.js';
 function findPathAStar(waypoints, startPos, goalPos) {
   if (!waypoints || waypoints.length === 0) return [goalPos];
 
-  // 3D nearest node (heavily weight Y floor difference so 5-story floors don't confuse nearest node!)
   const nearestNode = (p) => {
     let best = 0;
     let bestD = Infinity;
@@ -73,76 +72,142 @@ function findPathAStar(waypoints, startPos, goalPos) {
   return [goalPos];
 }
 
-function makeStaticWeaponMesh(root, targetLength = 0.56) {
-  root.updateMatrixWorld(true);
-  const grp = new THREE.Group();
-  root.traverse((o) => {
-    if (o.isMesh) {
-      const geo = o.geometry.clone();
-      if (o.isSkinnedMesh) {
-        const pos = geo.attributes.position;
-        const v = new THREE.Vector3();
-        for (let i = 0; i < pos.count; i++) {
-          v.fromBufferAttribute(pos, i);
-          o.applyBoneTransform(i, v);
-          pos.setXYZ(i, v.x, v.y, v.z);
-        }
-        geo.deleteAttribute('skinIndex');
-        geo.deleteAttribute('skinWeight');
-        geo.computeBoundingBox();
-        geo.computeVertexNormals();
-      } else {
-        geo.applyMatrix4(o.matrixWorld);
-      }
-      const m = new THREE.Mesh(geo, o.material.clone());
-      m.castShadow = false;
-      grp.add(m);
-    }
-  });
-  const box = new THREE.Box3().setFromObject(grp);
-  const sz = new THREE.Vector3();
-  const center = new THREE.Vector3();
-  box.getSize(sz);
-  box.getCenter(center);
-  const maxD = Math.max(sz.x, sz.y, sz.z, 0.001);
-  const sc = targetLength / maxD;
-  grp.children.forEach((c) => {
-    c.geometry.translate(-center.x, -center.y, -center.z);
-    c.geometry.scale(sc, sc, sc);
-  });
-  return grp;
-}
-
 function createLowPolySilhouette(tintHex) {
   const mat = new THREE.MeshStandardMaterial({ color: tintHex, roughness: 0.9, metalness: 0.04 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x26282a, roughness: 0.85, metalness: 0.15 });
   const grp = new THREE.Group();
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.65, 0.24), mat);
   torso.position.y = 1.08;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.24), dark);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), dark);
   head.position.y = 1.56;
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.78, 0.22), mat);
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.78, 0.22), mat);
   legs.position.y = 0.39;
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.56), dark);
-  gun.position.set(0.18, 1.24, 0.28);
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.54), dark);
+  gun.position.set(-0.1, 1.18, 0.26);
   grp.add(torso, head, legs, gun);
   return grp;
 }
 
 const ARCHETYPES = [
-  { key: 'fighter', outfit: 'camo', colorHex: 0x555e43, hideHead: ['Headband', 'Hair'], animType: 'fighter' },
-  { key: 'swat', colorHex: 0x3b4248, gun: 'm4', animType: 'quaternius' },
-  { key: 'soldier', colorHex: 0x595443, gun: 'akm', animType: 'quaternius' },
-  { key: 'fighter', outfit: 'desert', colorHex: 0x7b6d52, hideHead: ['Hair', 'Balaclava'], animType: 'fighter' },
-  { key: 'militia', colorHex: 0x4b4a3d, gun: 'pistol', animType: 'quaternius' },
-  { key: 'fighter', outfit: 'olive', colorHex: 0x4e5740, hideHead: ['FaceScarf', 'Balaclava'], animType: 'fighter' },
-  { key: 'swat', colorHex: 0x3a3e44, gun: 'm4', animType: 'quaternius' },
-  { key: 'soldier', colorHex: 0x625a46, gun: 'akm', animType: 'quaternius' },
-  { key: 'fighter', outfit: 'black', colorHex: 0x36393b, hideHead: ['Headband', 'Hair'], animType: 'fighter' },
-  { key: 'militia', colorHex: 0x585042, gun: 'pistol', animType: 'quaternius' },
-  { key: 'swat', colorHex: 0x3e4449, gun: 'm4', animType: 'quaternius' },
-  { key: 'fighter', outfit: 'desert', colorHex: 0x73674f, hideHead: ['Hair'], animType: 'fighter' },
+  { key: 'fighter', colorHex: 0x4b563a, gun: 'akm' },
+  { key: 'swat', colorHex: 0x7a6b4e, gun: 'm4' },
+  { key: 'soldier', colorHex: 0x6f5e44, gun: 'm4' },
+  { key: 'militia', colorHex: 0x35373a, gun: 'pistol' },
+  { key: 'fighter', colorHex: 0x4b563a, gun: 'akm' },
+  { key: 'swat', colorHex: 0x7a6b4e, gun: 'm4' },
+  { key: 'soldier', colorHex: 0x6f5e44, gun: 'akm' },
+  { key: 'militia', colorHex: 0x35373a, gun: 'pistol' },
+  { key: 'fighter', colorHex: 0x4b563a, gun: 'akm' },
+  { key: 'swat', colorHex: 0x7a6b4e, gun: 'm4' },
+  { key: 'soldier', colorHex: 0x6f5e44, gun: 'm4' },
+  { key: 'militia', colorHex: 0x35373a, gun: 'pistol' },
 ];
+
+// Reusable IK math scratch vectors/quaternions (zero GC pressure inside frame loop)
+const _vTargetW = new THREE.Vector3();
+const _vPoleW = new THREE.Vector3();
+const _vS = new THREE.Vector3();
+const _vToT = new THREE.Vector3();
+const _vToPole = new THREE.Vector3();
+const _vBend = new THREE.Vector3();
+const _vElbow = new THREE.Vector3();
+const _vBp = new THREE.Vector3();
+const _vCp = new THREE.Vector3();
+const _vU = new THREE.Vector3();
+const _vV = new THREE.Vector3();
+const _qDelta = new THREE.Quaternion();
+const _qParent = new THREE.Quaternion();
+const _qInv = new THREE.Quaternion();
+
+function findBone(root, suffix) {
+  let out = null;
+  root.traverse((o) => {
+    if (!out && o.isBone && o.name.endsWith(suffix)) out = o;
+  });
+  return out;
+}
+
+function captureClipPose(gltf, clipName, timeSec) {
+  const clip = (gltf.animations || []).find((a) => a.name === clipName);
+  const refs = {};
+  if (!clip) return refs;
+  const tmp = cloneSkinned(gltf.scene);
+  const mx = new THREE.AnimationMixer(tmp);
+  mx.clipAction(clip).play();
+  mx.update(timeSec);
+  tmp.traverse((o) => {
+    if (o.isBone) refs[o.name] = o.quaternion.clone();
+  });
+  return refs;
+}
+
+function normalizeWorldGun(gltfScene, targetLen, brightenMult = 2.4) {
+  const root = gltfScene.clone(true);
+  root.traverse((o) => {
+    if (o.isMesh) {
+      o.castShadow = false;
+      o.receiveShadow = false;
+      if (o.material) {
+        o.material = o.material.clone();
+        if (o.material.color) o.material.color.multiplyScalar(brightenMult);
+        o.material.roughness = 0.5;
+        o.material.metalness = 0.32;
+      }
+    }
+  });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const sz = new THREE.Vector3();
+  box.getSize(sz);
+  const sc = targetLen / Math.max(sz.x, sz.y, sz.z, 0.001);
+  root.scale.setScalar(sc);
+  root.rotation.y = sz.x > sz.z ? Math.PI / 2 : Math.PI; // TinyStrike models face -Z, point barrel +Z!
+  root.updateMatrixWorld(true);
+  const center = new THREE.Vector3();
+  new THREE.Box3().setFromObject(root).getCenter(center);
+  root.position.sub(center);
+  return root;
+}
+
+function solveTwoBoneIK(root, upper, fore, hand, targetLocal, poleLocal, L1, L2) {
+  if (!upper || !fore || !hand) return;
+  root.updateMatrixWorld(true);
+  _vTargetW.copy(targetLocal).applyMatrix4(root.matrixWorld);
+  _vPoleW.copy(poleLocal).applyMatrix4(root.matrixWorld);
+
+  upper.getWorldPosition(_vS);
+  _vToT.subVectors(_vTargetW, _vS);
+  const dist = Math.max(0.08, Math.min(L1 + L2 - 0.015, _vToT.length()));
+  const dir = _vToT.normalize();
+
+  const cosA = THREE.MathUtils.clamp((L1 * L1 + dist * dist - L2 * L2) / (2 * L1 * dist), -1, 1);
+  const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
+
+  _vToPole.subVectors(_vPoleW, _vS);
+  _vBend.copy(_vToPole).addScaledVector(dir, -_vToPole.dot(dir));
+  if (_vBend.lengthSq() < 0.0005) _vBend.set(0, -1, 0);
+  else _vBend.normalize();
+
+  _vElbow.copy(_vS).addScaledVector(dir, L1 * cosA).addScaledVector(_vBend, L1 * sinA);
+
+  const aimBone = (bone, child, desiredPosW) => {
+    root.updateMatrixWorld(true);
+    bone.getWorldPosition(_vBp);
+    child.getWorldPosition(_vCp);
+    _vU.subVectors(_vCp, _vBp);
+    _vV.subVectors(desiredPosW, _vBp);
+    if (_vU.lengthSq() < 0.00001 || _vV.lengthSq() < 0.00001) return;
+    _vU.normalize();
+    _vV.normalize();
+    _qDelta.setFromUnitVectors(_vU, _vV);
+    bone.parent.getWorldQuaternion(_qParent);
+    _qInv.copy(_qParent).invert();
+    bone.quaternion.premultiply(_qInv.multiply(_qDelta).multiply(_qParent));
+  };
+
+  aimBone(upper, fore, _vElbow);
+  aimBone(fore, hand, _vTargetW);
+}
 
 export class EnemySystem {
   constructor(scene, physics, assets, effects, audio) {
@@ -157,51 +222,35 @@ export class EnemySystem {
     this.waypoints = [];
     this.difficulty = DIFFICULTIES.regular;
     this._models = null;
-    this._outfitTex = null;
+    this._poseRefs = null;
     this._staticGuns = null;
   }
 
   async preloadModels() {
     if (this._models) return;
-    const [
-      fighter,
-      swat,
-      soldier,
-      militia,
-      akm,
-      m4,
-      pistol,
-      tCamo,
-      tDesert,
-      tOlive,
-      tBlack,
-    ] = await Promise.all([
+    const [fighter, swat, soldier, militia, wAkm, wM4, wPistol] = await Promise.all([
       this.assets.loadModel('enemy_fighter'),
       this.assets.loadModel('enemy_swat'),
       this.assets.loadModel('enemy_soldier'),
       this.assets.loadModel('enemy_militia'),
-      this.assets.loadModel('akm'),
-      this.assets.loadModel('m4'),
-      this.assets.loadModel('pistol'),
-      this.assets.loadTexture('outfit_camo', 1, 1),
-      this.assets.loadTexture('outfit_desert', 1, 1),
-      this.assets.loadTexture('outfit_olive', 1, 1),
-      this.assets.loadTexture('outfit_black', 1, 1),
+      this.assets.loadModel('world_akm'),
+      this.assets.loadModel('world_m4'),
+      this.assets.loadModel('world_pistol'),
     ]);
 
-    for (const tex of [tCamo, tDesert, tOlive, tBlack]) {
-      tex.flipY = false;
-      tex.wrapS = THREE.ClampToEdgeWrapping;
-      tex.wrapT = THREE.ClampToEdgeWrapping;
-      tex.needsUpdate = true;
+    this._models = { fighter, swat, soldier, militia };
+    this._poseRefs = {};
+    for (const [k, gltf] of Object.entries(this._models)) {
+      this._poseRefs[k] = {
+        tpose: captureClipPose(gltf, 'TPose', 0.01),
+        fist: captureClipPose(gltf, 'Run', 0.30),
+      };
     }
 
-    this._models = { fighter, swat, soldier, militia };
-    this._outfitTex = { camo: tCamo, desert: tDesert, olive: tOlive, black: tBlack };
     this._staticGuns = {
-      akm: makeStaticWeaponMesh(akm.scene, 0.56),
-      m4: makeStaticWeaponMesh(m4.scene, 0.52),
-      pistol: makeStaticWeaponMesh(pistol.scene, 0.25),
+      akm: normalizeWorldGun(wAkm.scene, 0.68, 2.2),
+      m4: normalizeWorldGun(wM4.scene, 0.68, 2.5),
+      pistol: normalizeWorldGun(wPistol.scene, 0.33, 2.4),
     };
   }
 
@@ -241,101 +290,103 @@ export class EnemySystem {
   _spawnOne(pos, isOutdoor, patrolNodes, idx) {
     const cfg = ARCHETYPES[idx % ARCHETYPES.length];
     const gltf = this._models[cfg.key];
+    const refs = this._poseRefs[cfg.key];
     const m0 = cloneSkinned(gltf.scene);
 
     m0.traverse((obj) => {
-      if (cfg.hideHead && cfg.hideHead.includes(obj.name)) {
-        obj.visible = false;
-      }
       if (obj.isMesh) {
         obj.castShadow = pos.y < 1.0;
         obj.receiveShadow = true;
-        obj.material = obj.material.clone();
-        if (cfg.key === 'fighter' && obj.material.name === 'M_Outfit' && cfg.outfit) {
-          obj.material.map = this._outfitTex[cfg.outfit];
-          obj.material.needsUpdate = true;
-        } else if (cfg.key === 'militia') {
-          if (obj.material.name === 'Purple') obj.material.color.setHex(0x4a4d3c);
-          else if (obj.material.name === 'LightBlue') obj.material.color.setHex(0x3f4335);
-          else if (obj.material.name === 'White') obj.material.color.setHex(0x2d2b28);
-        } else if (cfg.key === 'soldier' && (obj.material.name === 'Swat' || obj.material.name === 'Grey')) {
-          obj.material.color.lerp(new THREE.Color(cfg.colorHex), 0.35);
+        if (obj.material) {
+          obj.material.roughness = 0.85;
+          obj.material.metalness = 0.08;
         }
-        obj.material.roughness = Math.max(0.75, obj.material.roughness ?? 0.85);
       }
     });
-
-    // Attach crisp static weapon mesh to WristR bone on Quaternius combatants
-    if (cfg.animType === 'quaternius' && cfg.gun) {
-      const wrist = m0.getObjectByName('WristR');
-      if (wrist) {
-        const isPistol = cfg.gun === 'pistol';
-        const gun = this._staticGuns[cfg.gun].clone(true);
-        gun.scale.setScalar(0.01);
-        gun.rotation.set(Math.PI * 0.5, 0, Math.PI);
-        gun.position.set(0.0002, isPistol ? 0.0009 : 0.0012, 0.0002);
-        wrist.add(gun);
-      }
-    }
-
-    const lod = new THREE.LOD();
-    lod.position.set(pos.x, pos.y, pos.z);
-    lod.addLevel(m0, 0);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 34);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 72);
-    this.scene.add(lod);
-    this.lodObjects.push(lod);
 
     const mixer = new THREE.AnimationMixer(m0);
     const clipsByName = new Map();
     for (const clip of gltf.animations || []) {
       clipsByName.set(clip.name, mixer.clipAction(clip));
     }
-
-    const pickAction = (...names) => {
-      for (const n of names) {
-        if (clipsByName.has(n)) return clipsByName.get(n);
-      }
-      return null;
+    const animMap = {
+      idle: clipsByName.get('Idle'),
+      walk: clipsByName.get('Walk'),
+      run: clipsByName.get('Run'),
     };
-
-    const animMap =
-      cfg.animType === 'fighter'
-        ? {
-            idle: pickAction('Rifle_Idle', 'Idle_Loop'),
-            aim: pickAction('Rifle_AimIdle', 'Rifle_Idle'),
-            walk: pickAction('Rifle_Walk', 'Walk_Loop'),
-            run: pickAction('Rifle_Run', 'Jog_Fwd_Loop', 'Sprint_Loop'),
-            shoot: pickAction('Rifle_AimIdle', 'Rifle_AimWalk', 'Rifle_Idle'),
-            hit: pickAction('Hit_Chest', 'Hit_Knockback'),
-            death: pickAction('Death01'),
-          }
-        : {
-            idle: pickAction('CharacterArmature|Idle_Gun', 'CharacterArmature|Idle'),
-            aim: pickAction('CharacterArmature|Idle_Gun_Pointing', 'CharacterArmature|Idle_Gun'),
-            walk: pickAction('CharacterArmature|Walk'),
-            run: pickAction('CharacterArmature|Run_Shoot', 'CharacterArmature|Run'),
-            shoot: pickAction('CharacterArmature|Idle_Gun_Shoot', 'CharacterArmature|Gun_Shoot'),
-            hit: pickAction('CharacterArmature|HitRecieve', 'CharacterArmature|HitRecieve_2'),
-            death: pickAction('CharacterArmature|Death'),
-          };
-
-    if (animMap.shoot && cfg.animType !== 'fighter') {
-      animMap.shoot.setLoop(THREE.LoopOnce, 1);
-      animMap.shoot.clampWhenFinished = true;
-    }
-    if (animMap.hit) {
-      animMap.hit.setLoop(THREE.LoopOnce, 1);
-      animMap.hit.clampWhenFinished = false;
-    }
-    if (animMap.death) {
-      animMap.death.setLoop(THREE.LoopOnce, 1);
-      animMap.death.clampWhenFinished = true;
+    if (animMap.idle) {
+      animMap.idle.play();
+      mixer.update(0.05);
     }
 
-    if (animMap.idle) animMap.idle.play();
+    // Measure actual posed skeleton span so Mixamo Armature 0.01 scale never inflates soldiers!
+    m0.updateMatrixWorld(true);
+    let headBoneY = 1.57;
+    let footBoneY = 0.02;
+    m0.traverse((b) => {
+      if (b.isBone) {
+        b.getWorldPosition(_vBp);
+        if (b.name.endsWith('HeadTop_End') || b.name.endsWith('Head')) headBoneY = Math.max(headBoneY, _vBp.y);
+        if (b.name.endsWith('LeftFoot') || b.name.endsWith('RightFoot') || b.name.endsWith('LeftToeBase')) {
+          footBoneY = Math.min(footBoneY, _vBp.y);
+        }
+      }
+    });
+    const poseSpan = Math.max(0.5, headBoneY - footBoneY);
+    const scale = 1.62 / poseSpan; // 1.62m bone-span + ~0.16m helmet/boots = 1.78m standing soldier!
+    m0.scale.setScalar(scale);
+    m0.position.y = Math.max(-0.08, 0.03 - footBoneY * scale);
+    m0.rotation.y = Math.PI; // Mixamo local -Z faces +Z (Right = -X, Left = +X)
 
-    // Rapier kinematic capsule + CharacterController so enemies physically collide with walls & climb stairs!
+    const corpsePivot = new THREE.Group();
+    corpsePivot.add(m0);
+
+    const gunHolder = new THREE.Group();
+    const gunMesh = this._staticGuns[cfg.gun].clone(true);
+    gunHolder.add(gunMesh);
+
+    const lod = new THREE.LOD();
+    lod.position.set(pos.x, pos.y, pos.z);
+    const level0Group = new THREE.Group();
+    level0Group.add(corpsePivot, gunHolder);
+    lod.addLevel(level0Group, 0);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 36);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 74);
+    this.scene.add(lod);
+    this.lodObjects.push(lod);
+
+    // Cache Mixamo skeleton bone references once
+    lod.updateMatrixWorld(true);
+    const bones = {
+      lSh: findBone(m0, 'LeftShoulder'),
+      rSh: findBone(m0, 'RightShoulder'),
+      spine: findBone(m0, 'Spine'),
+      spine1: findBone(m0, 'Spine1'),
+      spine2: findBone(m0, 'Spine2'),
+      rArm: findBone(m0, 'RightArm'),
+      rFore: findBone(m0, 'RightForeArm'),
+      rHand: findBone(m0, 'RightHand'),
+      lArm: findBone(m0, 'LeftArm'),
+      lFore: findBone(m0, 'LeftForeArm'),
+      lHand: findBone(m0, 'LeftHand'),
+      fingers: [],
+    };
+    m0.traverse((b) => {
+      if (b.isBone && b.name.includes('Hand')) bones.fingers.push(b);
+    });
+
+    const distBones = (a, b) => {
+      if (!a || !b) return 0.28;
+      a.getWorldPosition(_vBp);
+      b.getWorldPosition(_vCp);
+      return Math.max(0.14, _vBp.distanceTo(_vCp));
+    };
+    const rL1 = distBones(bones.rArm, bones.rFore);
+    const rL2 = distBones(bones.rFore, bones.rHand);
+    const lL1 = distBones(bones.lArm, bones.lFore);
+    const lL2 = distBones(bones.lFore, bones.lHand);
+
+    // Rapier kinematic capsule + CharacterController preventing wall & stair clipping
     const RAPIER = this.physics.RAPIER;
     const rbDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, pos.y + 0.9, pos.z);
     const body = this.physics.world.createRigidBody(rbDesc);
@@ -352,7 +403,13 @@ export class EnemySystem {
       id: idx,
       cfg,
       lod,
+      level0Group,
+      corpsePivot,
+      gunHolder,
       m0,
+      refs,
+      bones,
+      ikLengths: { rL1, rL2, lL1, lL2 },
       mixer,
       animMap,
       activeKey: 'idle',
@@ -363,28 +420,34 @@ export class EnemySystem {
       velY: 0,
       homePos: new THREE.Vector3(pos.x, pos.y, pos.z),
       patrolNodes,
-      yaw: Math.random() * Math.PI * 2,
+      yaw: idx === 0 ? Math.PI : Math.random() * Math.PI * 2,
+      aimPitch: 0,
+      aimBlend: 0,
+      shootKick: 0,
+      hitTimer: 0,
+      strafeDir: idx % 2 === 0 ? 1 : -1,
+      strafeTimer: 1.5 + Math.random(),
       hp: 100,
       maxHp: 100,
       alive: true,
       deadTimer: 0,
+      deathDir: Math.random() < 0.5 ? -1 : 1,
       isOutdoor,
       state: isOutdoor && patrolNodes.length > 0 ? 'search' : 'idle',
       lastKnownTarget: null,
       path: [],
       pathIdx: 0,
       reactionTimer: 0,
-      fireCooldown: 0.45 + Math.random() * 0.55,
-      actionLockTimer: 0,
+      fireCooldown: 0.65 + Math.random() * 0.55,
+      recentShotTimer: 0,
       stuckTimer: 0,
-      aiAccum: Math.random() * 0.15,
+      aiAccum: Math.random() * 0.14,
       animAccum: 0,
       patrolTimer: 1.5 + Math.random() * 3.0,
     };
 
     if (enemy.state === 'search' && this.waypoints[patrolNodes[0]]) {
-      const targetWp = this.waypoints[patrolNodes[0]];
-      enemy.path = findPathAStar(this.waypoints, enemy.pos, targetWp);
+      enemy.path = findPathAStar(this.waypoints, enemy.pos, this.waypoints[patrolNodes[0]]);
     }
 
     this.physics.colliderMeta.set(collider.handle, {
@@ -395,10 +458,10 @@ export class EnemySystem {
     this.enemies.push(enemy);
   }
 
-  _switchAnim(e, key, forceRestart = false, fadeSec = 0.16) {
+  _switchAnim(e, key, fadeSec = 0.18) {
     const next = e.animMap[key];
     if (!next) return;
-    if (e.activeKey === key && !forceRestart) return;
+    if (e.activeKey === key) return;
     const prev = e.animMap[e.activeKey];
     if (prev && prev !== next) prev.fadeOut(fadeSec);
     next.reset().setEffectiveWeight(1).fadeIn(fadeSec).play();
@@ -411,26 +474,36 @@ export class EnemySystem {
     return n;
   }
 
-  notifyGunfire(origin, isPlayerIndoors) {
-    const hearRange = isPlayerIndoors ? 19 : 44;
-    let maxChasers = 3;
+  getThreatContacts() {
+    const list = [];
     for (const e of this.enemies) {
       if (!e.alive) continue;
-      if (e.state === 'alert') maxChasers--;
+      list.push({
+        pos: e.pos,
+        isHostileActive: e.state === 'engage' || e.recentShotTimer > 0,
+      });
+    }
+    return list;
+  }
+
+  notifyGunfire(origin, isPlayerIndoors) {
+    const hearRange = isPlayerIndoors ? 18 : 40;
+    let maxChasers = 2;
+    for (const e of this.enemies) {
+      if (e.alive && e.state === 'alert') maxChasers--;
     }
 
     for (const e of this.enemies) {
       if (!e.alive) continue;
       const d = Math.hypot(e.pos.x - origin.x, (e.pos.y - origin.y) * 1.6, e.pos.z - origin.z);
       if (d <= hearRange && (e.state === 'idle' || e.state === 'search')) {
-        if (d < 16 || maxChasers > 0) {
-          if (d >= 16) maxChasers--;
+        if (d < 15 || maxChasers > 0) {
+          if (d >= 15) maxChasers--;
           e.state = 'alert';
           e.lastKnownTarget = { x: origin.x, y: origin.y, z: origin.z };
           e.path = findPathAStar(this.waypoints, e.pos, e.lastKnownTarget);
           e.pathIdx = 0;
         } else {
-          // Turn alertly toward sound without abandoning upper floor or clumping
           e.yaw = Math.atan2(origin.x - e.pos.x, origin.z - e.pos.z);
         }
       }
@@ -440,7 +513,8 @@ export class EnemySystem {
   damageEnemy(enemy, amount, hitPoint, dir) {
     if (!enemy.alive) return;
     enemy.hp -= amount;
-    enemy.state = enemy.hp < 28 ? 'retreat' : 'engage';
+    enemy.state = enemy.hp < 26 ? 'retreat' : 'engage';
+    enemy.recentShotTimer = 3.0;
     if (hitPoint && dir) {
       enemy.lastKnownTarget = {
         x: hitPoint.x - dir.x * 6,
@@ -452,17 +526,14 @@ export class EnemySystem {
     if (enemy.hp <= 0) {
       enemy.alive = false;
       enemy.deadTimer = 0;
+      enemy.gunHolder.visible = false;
       if (enemy.collider) {
         this.physics.colliderMeta.delete(enemy.collider.handle);
         this.physics.world.removeCollider(enemy.collider, true);
         enemy.collider = null;
       }
-      if (enemy.animMap.death) {
-        this._switchAnim(enemy, 'death', true, 0.08);
-      }
-    } else if (enemy.animMap.hit) {
-      enemy.actionLockTimer = 0.28;
-      this._switchAnim(enemy, 'hit', true, 0.06);
+    } else {
+      enemy.hitTimer = 0.24;
     }
   }
 
@@ -473,7 +544,7 @@ export class EnemySystem {
     const dist = Math.hypot(dx, dy, dz);
     if (dist > this.difficulty.sightRange) return false;
 
-    if (e.state !== 'engage' && dist > 4.0) {
+    if (e.state !== 'engage' && dist > 4.5) {
       const fwdX = Math.sin(e.yaw);
       const fwdZ = Math.cos(e.yaw);
       const dot = (dx * fwdX + dz * fwdZ) / Math.max(0.01, Math.hypot(dx, dz));
@@ -489,7 +560,6 @@ export class EnemySystem {
   _moveWithPhysics(e, wishVx, wishVz, dt) {
     if (!e.collider || !e.charCtrl) return;
 
-    // Personal-space separation force so enemies never overlap or clump into one spot
     let sepX = 0;
     let sepZ = 0;
     for (const other of this.enemies) {
@@ -509,7 +579,6 @@ export class EnemySystem {
     const vz = wishVz + sepZ;
     const horizMag = Math.hypot(vx, vz);
 
-    // Auto-open closed wooden doors in movement direction
     if (horizMag > 0.4) {
       const rayDir = { x: vx / horizMag, y: 0, z: vz / horizMag };
       const doorHit = this.physics.castRay(
@@ -542,7 +611,6 @@ export class EnemySystem {
     e.body.setNextKinematicTranslation({ x: e.pos.x, y: e.pos.y + 0.9, z: e.pos.z });
     e.lod.position.set(e.pos.x, e.pos.y, e.pos.z);
 
-    // Track corner stall for clean re-routing
     if (horizMag > 0.5 && Math.hypot(e.pos.x - prevX, e.pos.z - prevZ) < horizMag * dt * 0.18) {
       e.stuckTimer += dt;
     } else {
@@ -550,31 +618,118 @@ export class EnemySystem {
     }
   }
 
+  _applyProceduralCombatPose(e, dt) {
+    // Only run full bone IK when at full-detail LOD 0
+    if (e.lod.getCurrentLevel() > 0) return;
+
+    const { bones, refs, ikLengths, gunHolder } = e;
+    const tRefs = refs.tpose;
+    const fistRefs = refs.fist;
+
+    // 1. Clean collarbones & reset humerus sleeve twist from Walk/Idle before solving 2-bone IK
+    if (bones.lSh && tRefs[bones.lSh.name]) bones.lSh.quaternion.slerp(tRefs[bones.lSh.name], 0.88);
+    if (bones.rSh && tRefs[bones.rSh.name]) bones.rSh.quaternion.slerp(tRefs[bones.rSh.name], 0.88);
+    if (bones.spine1 && tRefs[bones.spine1.name]) bones.spine1.quaternion.slerp(tRefs[bones.spine1.name], 0.35);
+    if (bones.spine2 && tRefs[bones.spine2.name]) bones.spine2.quaternion.slerp(tRefs[bones.spine2.name], 0.48);
+    if (bones.lArm && tRefs[bones.lArm.name]) bones.lArm.quaternion.copy(tRefs[bones.lArm.name]);
+    if (bones.rArm && tRefs[bones.rArm.name]) bones.rArm.quaternion.copy(tRefs[bones.rArm.name]);
+
+    // 2. Hit flinch + shooting chest kick
+    if (bones.spine2) {
+      const hitLean = e.hitTimer > 0 ? Math.sin((e.hitTimer / 0.24) * Math.PI) * -0.28 : 0;
+      bones.spine2.rotation.x += e.aimPitch * 0.38 + hitLean - e.shootKick * 0.12;
+    }
+
+    // 3. Interpolate weapon between Low-Ready tactical patrol vs Shoulder Aiming
+    const targetAim = e.state === 'engage' || e.state === 'retreat' ? 1 : 0;
+    e.aimBlend += (targetAim - e.aimBlend) * Math.min(1, dt * 10);
+    const isPistol = e.cfg.gun === 'pistol';
+
+    const aimGX = isPistol ? -0.04 : -0.14;
+    const aimGY = isPistol ? 1.21 : 1.18;
+    const aimGZ = isPistol ? 0.50 : 0.38;
+
+    const lowGX = isPistol ? -0.05 : -0.02;
+    const lowGY = isPistol ? 1.11 : 1.07;
+    const lowGZ = isPistol ? 0.42 : 0.35;
+
+    const gx = THREE.MathUtils.lerp(lowGX, aimGX, e.aimBlend);
+    const gy = THREE.MathUtils.lerp(lowGY, aimGY, e.aimBlend);
+    const gz = THREE.MathUtils.lerp(lowGZ, aimGZ, e.aimBlend) - e.shootKick * 0.05;
+    const gp = THREE.MathUtils.lerp(0.28, -e.aimPitch, e.aimBlend) - e.shootKick * 0.15;
+    const gyaw = THREE.MathUtils.lerp(isPistol ? 0.18 : 0.40, 0.04, e.aimBlend);
+
+    gunHolder.position.set(gx, gy, gz);
+    gunHolder.rotation.set(gp, gyaw, 0);
+
+    // 4. Right hand (-X side) pistol grip & Left hand (+X side) foregrip/handguard targets
+    const rTarget = isPistol
+      ? new THREE.Vector3(gx - 0.01, gy - 0.04, gz - 0.11)
+      : new THREE.Vector3(gx - 0.01, gy - 0.04, gz - 0.13);
+    const lTarget = isPistol
+      ? new THREE.Vector3(gx + 0.04, gy - 0.05, gz - 0.11)
+      : new THREE.Vector3(gx + 0.11 * (1 - e.aimBlend) + 0.06, gy - 0.03 - (1 - e.aimBlend) * 0.05, gz + 0.10);
+
+    solveTwoBoneIK(
+      e.level0Group,
+      bones.rArm,
+      bones.rFore,
+      bones.rHand,
+      rTarget,
+      new THREE.Vector3(-0.44, 0.85, 0.02),
+      ikLengths.rL1,
+      ikLengths.rL2
+    );
+    solveTwoBoneIK(
+      e.level0Group,
+      bones.lArm,
+      bones.lFore,
+      bones.lHand,
+      lTarget,
+      new THREE.Vector3(0.44, 0.82, 0.08),
+      ikLengths.lL1,
+      ikLengths.lL2
+    );
+
+    // 5. Snap finger bones into clean closed tactical fists from the Run clip
+    for (const fb of bones.fingers) {
+      if (fistRefs[fb.name]) fb.quaternion.copy(fistRefs[fb.name]);
+    }
+  }
+
   update(dt, playerPos, onDamagePlayer) {
     for (const e of this.enemies) {
       if (!e.alive) {
         e.deadTimer += dt;
-        if (e.deadTimer < 3.5) {
-          e.mixer.update(dt);
+        // Smooth physical fall collapse onto ground over 0.55s
+        if (e.deadTimer <= 0.6) {
+          const t = Math.min(1, e.deadTimer / 0.55);
+          const ease = 1 - (1 - t) * (1 - t);
+          e.corpsePivot.rotation.x = ease * -1.48;
+          e.corpsePivot.position.y = ease * 0.14;
+          e.corpsePivot.position.z = ease * -0.15;
         }
         continue;
       }
 
-      const distToPlayer = Math.hypot(playerPos.x - e.pos.x, playerPos.y - e.pos.y, playerPos.z - e.pos.z);
-      const isFar = distToPlayer > 34;
+      if (e.shootKick > 0) e.shootKick = Math.max(0, e.shootKick - dt * 7);
+      if (e.hitTimer > 0) e.hitTimer = Math.max(0, e.hitTimer - dt);
+      if (e.recentShotTimer > 0) e.recentShotTimer = Math.max(0, e.recentShotTimer - dt);
 
-      // Always keep animations smooth when within active combat sightline
+      const distToPlayer = Math.hypot(playerPos.x - e.pos.x, playerPos.y - e.pos.y, playerPos.z - e.pos.z);
+      const isFar = distToPlayer > 36;
+
+      // Smooth mixer step & combat IK
       e.animAccum += dt;
       if (!isFar || e.animAccum >= 0.05) {
         e.mixer.update(e.animAccum);
+        this._applyProceduralCombatPose(e, e.animAccum);
         e.animAccum = 0;
       }
 
-      if (e.actionLockTimer > 0) e.actionLockTimer -= dt;
-
-      // Throttle full AI brain ticks gently only when very far away
+      // Staggered AI brain & raycast scheduling
       e.aiAccum += dt;
-      const aiInterval = isFar ? 0.16 : 0.033;
+      const aiInterval = isFar ? 0.18 : 0.04;
       if (e.aiAccum < aiInterval) continue;
       const stepDt = e.aiAccum;
       e.aiAccum = 0;
@@ -599,6 +754,7 @@ export class EnemySystem {
       let desiredAnim = 'idle';
 
       if (e.state === 'idle') {
+        e.aimPitch *= 0.9;
         e.patrolTimer -= stepDt;
         if (e.patrolTimer <= 0) {
           e.patrolTimer = 2.5 + Math.random() * 3.5;
@@ -614,7 +770,8 @@ export class EnemySystem {
           }
         }
       } else if (e.state === 'alert' || e.state === 'search') {
-        const moveRes = this._computePathMove(e, 2.45, stepDt);
+        e.aimPitch *= 0.9;
+        const moveRes = this._computePathMove(e, 2.35, stepDt);
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
         desiredAnim = moveRes.moving ? 'walk' : 'idle';
@@ -636,30 +793,45 @@ export class EnemySystem {
           e.path = findPathAStar(this.waypoints, e.pos, e.homePos);
           e.pathIdx = 0;
         }
-        const moveRes = this._computePathMove(e, 3.85, stepDt);
+        const moveRes = this._computePathMove(e, 3.6, stepDt);
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
-        desiredAnim = moveRes.moving ? 'run' : 'aim';
+        desiredAnim = moveRes.moving ? 'run' : 'idle';
         if (sees && e.fireCooldown <= 0) {
           this._shootAtPlayer(e, playerPos, onDamagePlayer);
         }
       } else if (e.state === 'engage') {
         const dx = playerPos.x - e.pos.x;
+        const dy = playerPos.y - e.pos.y;
         const dz = playerPos.z - e.pos.z;
         e.yaw = Math.atan2(dx, dz);
         const horizDist = Math.hypot(dx, dz);
+        e.aimPitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.max(1, horizDist)), -0.6, 0.6);
 
-        if (horizDist > 16 && Math.abs(playerPos.y - e.pos.y) < 1.8) {
-          wishVx = (dx / horizDist) * 3.1;
-          wishVz = (dz / horizDist) * 3.1;
+        // Tactical strafe-peek & spacing instead of standing robotically still!
+        e.strafeTimer -= stepDt;
+        if (e.strafeTimer <= 0) {
+          e.strafeTimer = 1.6 + Math.random() * 1.4;
+          e.strafeDir = -e.strafeDir;
+        }
+
+        if (horizDist > 16 && Math.abs(dy) < 1.8) {
+          wishVx = (dx / horizDist) * 2.9;
+          wishVz = (dz / horizDist) * 2.9;
           desiredAnim = 'run';
-        } else if (horizDist < 4.5 && Math.abs(playerPos.y - e.pos.y) < 1.8) {
-          // Tactical slight backpedal in extreme CQB
-          wishVx = -(dx / Math.max(0.1, horizDist)) * 1.4;
-          wishVz = -(dz / Math.max(0.1, horizDist)) * 1.4;
+        } else if (horizDist < 4.5 && Math.abs(dy) < 1.8) {
+          wishVx = -(dx / Math.max(0.1, horizDist)) * 1.3;
+          wishVz = -(dz / Math.max(0.1, horizDist)) * 1.3;
+          desiredAnim = 'walk';
+        } else if (horizDist > 5.0 && Math.abs(dy) < 1.8) {
+          // Subtle lateral tactical peek weave
+          const rx = Math.cos(e.yaw) * e.strafeDir;
+          const rz = -Math.sin(e.yaw) * e.strafeDir;
+          wishVx = rx * 1.15;
+          wishVz = rz * 1.15;
           desiredAnim = 'walk';
         } else {
-          desiredAnim = 'aim';
+          desiredAnim = 'idle';
         }
 
         if (e.reactionTimer > 0) {
@@ -674,9 +846,7 @@ export class EnemySystem {
 
       this._moveWithPhysics(e, wishVx, wishVz, stepDt);
       e.lod.rotation.y = e.yaw;
-      if (e.actionLockTimer <= 0) {
-        this._switchAnim(e, desiredAnim);
-      }
+      this._switchAnim(e, desiredAnim);
     }
   }
 
@@ -702,15 +872,13 @@ export class EnemySystem {
   }
 
   _shootAtPlayer(e, playerPos, onDamagePlayer) {
-    e.fireCooldown = 0.34 + Math.random() * 0.44;
-    if (e.animMap.shoot) {
-      e.actionLockTimer = 0.24;
-      this._switchAnim(e, 'shoot', true, 0.05);
-    }
+    e.fireCooldown = 0.44 + Math.random() * 0.48;
+    e.shootKick = 1.0;
+    e.recentShotTimer = 3.5;
 
     const fwdX = Math.sin(e.yaw);
     const fwdZ = Math.cos(e.yaw);
-    const muzzle = new THREE.Vector3(e.pos.x + fwdX * 0.45, e.pos.y + 1.42, e.pos.z + fwdZ * 0.45);
+    const muzzle = new THREE.Vector3(e.pos.x + fwdX * 0.48, e.pos.y + 1.38, e.pos.z + fwdZ * 0.48);
     const target = new THREE.Vector3(playerPos.x, playerPos.y + 1.32, playerPos.z);
     const dir = new THREE.Vector3().subVectors(target, muzzle).normalize();
 
@@ -736,7 +904,7 @@ export class EnemySystem {
     this.effects.spawnTracer(muzzle, endPt);
 
     if (hit && hit.meta?.kind === 'player') {
-      if (onDamagePlayer) onDamagePlayer(10 * this.difficulty.damageMult, e.pos);
+      if (onDamagePlayer) onDamagePlayer(9 * this.difficulty.damageMult, e.pos);
     } else if (hit) {
       this.effects.spawnImpact(hit.point, hit.normal, hit.meta?.material || 'concrete');
     }

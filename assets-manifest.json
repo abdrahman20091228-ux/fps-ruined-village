@@ -1,23 +1,23 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T10:34:02.054Z",
-  "totalBytes": 7634579,
-  "fileCount": 68,
+  "generatedAt": "2026-11-13T11:47:47.118Z",
+  "totalBytes": 5145977,
+  "fileCount": 63,
   "categories": {
-    "code": 184953,
-    "models": 5194592,
-    "textures": 2097340,
+    "code": 213233,
+    "models": 2751968,
+    "textures": 2023082,
     "audio": 157694
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 25510,
+      "size": 30886,
       "category": "code"
     },
     {
       "path": "src/audio/audioSystem.js",
-      "size": 12709,
+      "size": 13989,
       "category": "code"
     },
     {
@@ -27,12 +27,12 @@
     },
     {
       "path": "src/core/config.js",
-      "size": 1555,
+      "size": 1910,
       "category": "code"
     },
     {
       "path": "src/core/engine.js",
-      "size": 9537,
+      "size": 8832,
       "category": "code"
     },
     {
@@ -42,17 +42,17 @@
     },
     {
       "path": "src/fx/effects.js",
-      "size": 6599,
+      "size": 7746,
       "category": "code"
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 12389,
+      "size": 21802,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 19185,
+      "size": 24394,
       "category": "code"
     },
     {
@@ -62,12 +62,12 @@
     },
     {
       "path": "src/styles.css",
-      "size": 16554,
+      "size": 19542,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 15539,
+      "size": 18012,
       "category": "code"
     },
     {
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 45028,
+      "size": 45772,
       "category": "code"
     },
     {
@@ -152,27 +152,22 @@
     },
     {
       "path": "assets/models/akm.glb",
-      "size": 51544,
+      "size": 97876,
       "category": "models"
     },
     {
       "path": "assets/models/ammo_box.glb",
-      "size": 62628,
+      "size": 19924,
       "category": "models"
     },
     {
       "path": "assets/models/barrel.glb",
-      "size": 119384,
+      "size": 21164,
       "category": "models"
     },
     {
       "path": "assets/models/bush.glb",
-      "size": 175156,
-      "category": "models"
-    },
-    {
-      "path": "assets/models/chair.glb",
-      "size": 108812,
+      "size": 48120,
       "category": "models"
     },
     {
@@ -187,107 +182,107 @@
     },
     {
       "path": "assets/models/enemy_fighter.glb",
-      "size": 1287960,
+      "size": 413996,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_militia.glb",
-      "size": 561716,
+      "size": 420512,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_soldier.glb",
-      "size": 608416,
+      "size": 422784,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_swat.glb",
-      "size": 580836,
+      "size": 425568,
       "category": "models"
     },
     {
       "path": "assets/models/generator.glb",
-      "size": 215768,
+      "size": 63800,
       "category": "models"
     },
     {
       "path": "assets/models/jerrycan.glb",
-      "size": 111528,
+      "size": 17584,
       "category": "models"
     },
     {
       "path": "assets/models/m4.glb",
-      "size": 64532,
+      "size": 167852,
       "category": "models"
     },
     {
       "path": "assets/models/medical_box.glb",
-      "size": 98664,
+      "size": 25916,
       "category": "models"
     },
     {
       "path": "assets/models/mil_crate.glb",
-      "size": 130360,
+      "size": 40800,
       "category": "models"
     },
     {
       "path": "assets/models/old_tyre.glb",
-      "size": 92844,
+      "size": 18000,
       "category": "models"
     },
     {
       "path": "assets/models/pistol.glb",
-      "size": 33380,
-      "category": "models"
-    },
-    {
-      "path": "assets/models/propane_tank.glb",
-      "size": 84664,
+      "size": 163284,
       "category": "models"
     },
     {
       "path": "assets/models/road_barrier.glb",
-      "size": 113324,
+      "size": 50668,
       "category": "models"
     },
     {
       "path": "assets/models/rollershutter.glb",
-      "size": 83644,
+      "size": 22768,
       "category": "models"
     },
     {
       "path": "assets/models/street_lamp.glb",
-      "size": 74536,
-      "category": "models"
-    },
-    {
-      "path": "assets/models/trashbag.glb",
-      "size": 90404,
-      "category": "models"
-    },
-    {
-      "path": "assets/models/utility_box.glb",
-      "size": 78372,
+      "size": 21548,
       "category": "models"
     },
     {
       "path": "assets/models/wooden_table.glb",
-      "size": 57992,
+      "size": 12464,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/world_akm.glb",
+      "size": 21616,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/world_m4.glb",
+      "size": 21860,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/world_pistol.glb",
+      "size": 19204,
       "category": "models"
     },
     {
       "path": "assets/models/wreck_car.glb",
-      "size": 122372,
+      "size": 50952,
       "category": "models"
     },
     {
       "path": "assets/models/wreck_pickup.glb",
-      "size": 75812,
+      "size": 62364,
       "category": "models"
     },
     {
       "path": "assets/models/wreck_sedan.glb",
-      "size": 74364,
+      "size": 65764,
       "category": "models"
     },
     {
@@ -313,26 +308,6 @@
     {
       "path": "assets/textures/metal.webp",
       "size": 64070,
-      "category": "textures"
-    },
-    {
-      "path": "assets/textures/outfit_black.webp",
-      "size": 14340,
-      "category": "textures"
-    },
-    {
-      "path": "assets/textures/outfit_camo.webp",
-      "size": 20308,
-      "category": "textures"
-    },
-    {
-      "path": "assets/textures/outfit_desert.webp",
-      "size": 24738,
-      "category": "textures"
-    },
-    {
-      "path": "assets/textures/outfit_olive.webp",
-      "size": 14872,
       "category": "textures"
     },
     {

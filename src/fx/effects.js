@@ -6,12 +6,12 @@ const MAX_CASINGS = 24;
 const MAX_PARTICLES = 96;
 
 const SURFACE_COLORS = {
-  concrete: 0x8b8880,
-  plaster: 0xa89f8f,
-  wood: 0x7b5f42,
-  metal: 0xffb85c,
-  dirt: 0x625544,
-  enemy: 0x7a231e,
+  concrete: 0x99958c,
+  plaster: 0xb0a798,
+  wood: 0x8a6a4a,
+  metal: 0xffc05e,
+  dirt: 0x6c5e4b,
+  enemy: 0x82251e,
 };
 
 export class EffectsSystem {
@@ -19,7 +19,7 @@ export class EffectsSystem {
     this.scene = scene;
 
     // Pooled muzzle light
-    this.muzzleLight = new THREE.PointLight(0xffbe6b, 0, 7.5, 2);
+    this.muzzleLight = new THREE.PointLight(0xffc272, 0, 7.5, 2);
     this.scene.add(this.muzzleLight);
     this._muzzleTimer = 0;
 
@@ -42,29 +42,40 @@ export class EffectsSystem {
       this.decals.push(mesh);
     }
 
-    // Visual tracers pool
+    // Real traveling luminous bullet streak tracers (not frozen full-length sticks!)
     this.tracers = [];
     this._tracerIndex = 0;
-    const tracerGeo = new THREE.CylinderGeometry(0.008, 0.008, 1, 4, 1, true);
+    const tracerGeo = new THREE.CylinderGeometry(0.003, 0.010, 1, 5, 1, true);
     tracerGeo.rotateX(Math.PI / 2);
     for (let i = 0; i < MAX_TRACERS; i++) {
       const mat = new THREE.MeshBasicMaterial({
-        color: 0xffdca0,
+        color: 0xffd57c,
         transparent: true,
         opacity: 0,
+        blending: THREE.AdditiveBlending,
         depthWrite: false,
       });
       const mesh = new THREE.Mesh(tracerGeo, mat);
       mesh.visible = false;
       this.scene.add(mesh);
-      this.tracers.push({ mesh, life: 0, maxLife: 0.07 });
+      this.tracers.push({
+        mesh,
+        start: new THREE.Vector3(),
+        dir: new THREE.Vector3(),
+        totalDist: 0,
+        traveled: 0,
+        speed: 145,
+        streakLen: 1.85,
+        fadeLife: 0,
+        active: false,
+      });
     }
 
     // Shell casings pool
     this.casings = [];
     this._casingIndex = 0;
     const casingGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.028, 5);
-    const casingMat = new THREE.MeshStandardMaterial({ color: 0xb69548, roughness: 0.35, metalness: 0.85 });
+    const casingMat = new THREE.MeshStandardMaterial({ color: 0xc29e4c, roughness: 0.35, metalness: 0.72 });
     for (let i = 0; i < MAX_CASINGS; i++) {
       const mesh = new THREE.Mesh(casingGeo, casingMat);
       mesh.visible = false;
@@ -80,9 +91,9 @@ export class EffectsSystem {
     // Impact particles pool
     this.particles = [];
     this._particleIndex = 0;
-    const partGeo = new THREE.BoxGeometry(0.045, 0.045, 0.045);
+    const partGeo = new THREE.BoxGeometry(0.042, 0.042, 0.042);
     for (let i = 0; i < MAX_PARTICLES; i++) {
-      const mat = new THREE.MeshBasicMaterial({ color: 0x8b8880, transparent: true, opacity: 0.9 });
+      const mat = new THREE.MeshBasicMaterial({ color: 0x99958c, transparent: true, opacity: 0.92 });
       const mesh = new THREE.Mesh(partGeo, mat);
       mesh.visible = false;
       this.scene.add(mesh);
@@ -97,7 +108,7 @@ export class EffectsSystem {
 
   triggerMuzzleFlash(worldPos) {
     this.muzzleLight.position.copy(worldPos);
-    this.muzzleLight.intensity = 4.2;
+    this.muzzleLight.intensity = 4.4;
     this._muzzleTimer = 0.045;
   }
 
@@ -105,14 +116,22 @@ export class EffectsSystem {
     const t = this.tracers[this._tracerIndex];
     this._tracerIndex = (this._tracerIndex + 1) % MAX_TRACERS;
     const dist = start.distanceTo(end);
-    if (dist < 0.2) return;
-    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-    t.mesh.position.copy(mid);
+    if (dist < 0.35) return;
+
+    t.start.copy(start);
+    t.dir.subVectors(end, start).normalize();
+    t.totalDist = Math.min(dist, 95);
+    t.streakLen = Math.min(2.1, t.totalDist * 0.45);
+    t.traveled = Math.min(t.streakLen * 0.65, t.totalDist * 0.4);
+    t.fadeLife = 0.045;
+    t.active = true;
+
+    const curLen = Math.max(0.25, Math.min(t.streakLen, t.traveled));
+    t.mesh.position.copy(t.start).addScaledVector(t.dir, Math.max(0, t.traveled - curLen * 0.5));
     t.mesh.lookAt(end);
-    t.mesh.scale.set(1, 1, Math.min(dist, 45));
-    t.mesh.material.opacity = 0.78;
+    t.mesh.scale.set(1, 1, curLen);
+    t.mesh.material.opacity = 0.96;
     t.mesh.visible = true;
-    t.life = t.maxLife;
   }
 
   spawnCasing(origin, rightDir, upDir) {
@@ -151,13 +170,13 @@ export class EffectsSystem {
       part.mesh.position.copy(p).addScaledVector(n, 0.03);
       part.mesh.material.color.setHex(colorHex);
       part.mesh.material.opacity = 0.95;
-      part.mesh.scale.setScalar(material === 'dirt' ? 1.5 : 0.9);
+      part.mesh.scale.setScalar(material === 'dirt' ? 1.5 : 0.95);
       part.mesh.visible = true;
-      const spread = material === 'metal' ? 3.8 : 2.3;
+      const spread = material === 'metal' ? 4.2 : 2.3;
       part.vel
         .copy(n)
-        .multiplyScalar(1.8 + Math.random() * 2.2)
-        .add(new THREE.Vector3((Math.random() - 0.5) * spread, Math.random() * 1.6, (Math.random() - 0.5) * spread));
+        .multiplyScalar(1.9 + Math.random() * 2.4)
+        .add(new THREE.Vector3((Math.random() - 0.5) * spread, Math.random() * 1.7, (Math.random() - 0.5) * spread));
       part.maxLife = material === 'dirt' ? 0.45 : 0.28;
       part.life = part.maxLife;
     }
@@ -170,10 +189,22 @@ export class EffectsSystem {
     }
 
     for (const t of this.tracers) {
-      if (t.life > 0) {
-        t.life -= dt;
-        t.mesh.material.opacity = Math.max(0, (t.life / t.maxLife) * 0.8);
-        if (t.life <= 0) t.mesh.visible = false;
+      if (!t.active) continue;
+      if (t.traveled < t.totalDist) {
+        t.traveled = Math.min(t.totalDist, t.traveled + t.speed * dt);
+        const curLen = Math.max(0.25, Math.min(t.streakLen, t.traveled));
+        const headDist = Math.min(t.totalDist, t.traveled);
+        const centerDist = Math.max(curLen * 0.5, headDist - curLen * 0.5);
+        t.mesh.position.copy(t.start).addScaledVector(t.dir, centerDist);
+        t.mesh.scale.set(1, 1, curLen);
+        t.mesh.material.opacity = 0.94;
+      } else {
+        t.fadeLife -= dt;
+        t.mesh.material.opacity = Math.max(0, (t.fadeLife / 0.045) * 0.85);
+        if (t.fadeLife <= 0) {
+          t.mesh.visible = false;
+          t.active = false;
+        }
       }
     }
 

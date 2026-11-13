@@ -30,8 +30,12 @@ let gameState = 'loading'; // loading | menu | playing | paused | ended
 let hitStopTimer = 0;
 let hitMarkerTimer = 0;
 let damageFlashTimer = 0;
-let lastDamageYaw = 0;
+let missionBannerTimer = 0;
+let medkitToastTimer = 0;
 let worldBuilt = false;
+
+// Pooled dynamic directional damage arcs (track exact attacker world position as player turns!)
+const damageHits = []; // [{ sourcePos: THREE.Vector3, timer: number, maxTimer: number }]
 
 const AUDIO_CLIPS = {
   pistol_fire: './assets/audio/pistol_fire.ogg',
@@ -63,30 +67,127 @@ function showHitMarker() {
   document.getElementById('hit-marker').classList.remove('hidden');
 }
 
+function showMissionBanner() {
+  missionBannerTimer = 4.5;
+  document.getElementById('mission-banner').classList.remove('hidden');
+}
+
+function showMedkitToast(healedAmount) {
+  medkitToastTimer = 2.0;
+  const el = document.getElementById('medkit-toast');
+  el.textContent = `+${healedAmount} HP // MEDKIT`;
+  el.classList.remove('hidden');
+}
+
 function onPlayerDamaged(amount, sourcePos) {
   if (gameState !== 'playing') return;
   player.health = Math.max(0, player.health - amount);
-  damageFlashTimer = 0.42;
+  damageFlashTimer = 0.35;
 
-  const dx = sourcePos.x - player.currPos.x;
-  const dz = sourcePos.z - player.currPos.z;
-  const worldAngle = Math.atan2(dx, dz);
-  lastDamageYaw = worldAngle - player.yaw;
+  if (sourcePos) {
+    const src = new THREE.Vector3(sourcePos.x, sourcePos.y || 0, sourcePos.z);
+    // Merge if an existing indicator already tracks a nearby attacker
+    const existing = damageHits.find((h) => h.sourcePos.distanceToSquared(src) < 6.0);
+    if (existing) {
+      existing.sourcePos.copy(src);
+      existing.timer = existing.maxTimer;
+    } else {
+      if (damageHits.length >= 3) damageHits.shift();
+      damageHits.push({ sourcePos: src, timer: 1.25, maxTimer: 1.25 });
+    }
+  }
 
   const vig = document.getElementById('damage-vignette');
-  vig.style.boxShadow = 'inset 0 0 95px rgba(188, 34, 24, 0.72)';
-
-  const arrow = document.getElementById('damage-arrow');
-  arrow.classList.remove('hidden');
-  arrow.style.transform = `rotate(${Math.round((-lastDamageYaw * 180) / Math.PI)}deg)`;
+  vig.style.boxShadow = 'inset 0 0 90px rgba(188, 34, 24, 0.70)';
 
   if (player.health <= 0) {
     finishMission(false);
   }
 }
 
+function updateDynamicDamageIndicators(dt) {
+  const arcs = document.querySelectorAll('#damage-indicators .dmg-arc');
+  for (let i = damageHits.length - 1; i >= 0; i--) {
+    damageHits[i].timer -= dt;
+    if (damageHits[i].timer <= 0) damageHits.splice(i, 1);
+  }
+
+  const fwdX = -Math.sin(player.yaw);
+  const fwdZ = -Math.cos(player.yaw);
+  const rightX = Math.cos(player.yaw);
+  const rightZ = -Math.sin(player.yaw);
+
+  for (let i = 0; i < arcs.length; i++) {
+    const el = arcs[i];
+    const h = damageHits[i];
+    if (!h || gameState !== 'playing') {
+      el.classList.add('hidden');
+      continue;
+    }
+    const dx = h.sourcePos.x - player.currPos.x;
+    const dz = h.sourcePos.z - player.currPos.z;
+    const fwdDot = dx * fwdX + dz * fwdZ;
+    const rightDot = dx * rightX + dz * rightZ;
+    const deg = (Math.atan2(rightDot, fwdDot) * 180) / Math.PI;
+    const opacity = Math.min(1, (h.timer / h.maxTimer) * 1.45);
+    el.classList.remove('hidden');
+    el.style.opacity = String(opacity.toFixed(2));
+    el.style.transform = `translate(-50%, -50%) rotate(${Math.round(deg)}deg) translateY(-92px)`;
+  }
+}
+
+function updateCompassThreats() {
+  const rail = document.getElementById('compass-threats');
+  if (!rail) return;
+  const contacts = enemySys.getThreatContacts();
+  const showAll = contacts.length <= 6;
+
+  // Ensure crisp pool of up to 12 blip elements without recreating DOM nodes constantly
+  while (rail.children.length < 12) {
+    const d = document.createElement('span');
+    d.className = 'threat-blip hidden';
+    rail.appendChild(d);
+  }
+
+  const fwdX = -Math.sin(player.yaw);
+  const fwdZ = -Math.cos(player.yaw);
+  const rightX = Math.cos(player.yaw);
+  const rightZ = -Math.sin(player.yaw);
+
+  let used = 0;
+  for (const c of contacts) {
+    if (!showAll && !c.isHostileActive) continue;
+    if (used >= 12) break;
+    const dx = c.pos.x - player.currPos.x;
+    const dz = c.pos.z - player.currPos.z;
+    const fwdDot = dx * fwdX + dz * fwdZ;
+    const rightDot = dx * rightX + dz * rightZ;
+    const relAng = Math.atan2(rightDot, fwdDot); // -PI .. +PI
+    const clampedPct = 50 + THREE.MathUtils.clamp(relAng / (Math.PI * 0.55), -1, 1) * 44;
+
+    const blip = rail.children[used++];
+    blip.classList.remove('hidden');
+    blip.classList.toggle('active', c.isHostileActive);
+    blip.style.left = `${clampedPct.toFixed(1)}%`;
+    const dy = c.pos.y - (player.currPos.y - player.standHeight * 0.5);
+    blip.textContent = dy > 2.2 ? '▲' : dy < -2.2 ? '▼' : '';
+  }
+
+  for (let i = used; i < 12; i++) {
+    rail.children[i].classList.add('hidden');
+  }
+}
+
 function finishMission(victory) {
   gameState = 'ended';
+  input.clearActiveInputs();
+  weapons.setVisible(false);
+  if (Math.abs(engine.camera.fov - 72) > 0.1) {
+    engine.camera.fov = 72;
+    engine.camera.updateProjectionMatrix();
+  }
+  damageHits.length = 0;
+  updateDynamicDamageIndicators(0);
   document.getElementById('hud').classList.add('hidden');
   document.getElementById('touch-controls').classList.add('hidden');
   document.getElementById('end-screen').classList.remove('hidden');
@@ -100,7 +201,6 @@ function finishMission(victory) {
 
 async function runManifestLoadingFlow() {
   const errorBox = document.getElementById('loading-error-box');
-  const errorText = document.getElementById('loading-error-text');
   const statusEl = document.getElementById('loading-status-text');
   const bytesEl = document.getElementById('loading-bytes-text');
   const barEl = document.getElementById('loading-progress-bar');
@@ -125,7 +225,6 @@ async function runManifestLoadingFlow() {
       ? `Offline Ready • ${fmtMB(manifest.totalBytes)} cached`
       : `Package: ${fmtMB(manifest.totalBytes)} (${manifest.fileCount} files)`;
 
-  // Mobile data / Save-Data confirmation if remaining download > 20 MB
   const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   const isMetered = !!(conn && (conn.saveData || (conn.effectiveType && conn.effectiveType !== '4g')));
   if (isMetered && cacheStats.remainingBytes > 20 * 1024 * 1024) {
@@ -173,21 +272,31 @@ async function buildWorld() {
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   totalEnemies = enemySys.getRemainingCount();
   player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
+  weapons.setVisible(false);
 }
 
 async function restartMission() {
   document.getElementById('end-screen').classList.add('hidden');
+  input.clearActiveInputs();
   weapons.resetAll();
+  if (Math.abs(engine.camera.fov - 72) > 0.1) {
+    engine.camera.fov = 72;
+    engine.camera.updateProjectionMatrix();
+  }
+  village?.resetMedkits();
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   totalEnemies = enemySys.getRemainingCount();
   player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
+  damageHits.length = 0;
+  updateDynamicDamageIndicators(0);
   document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
-  document.getElementById('damage-arrow').classList.add('hidden');
 
   document.getElementById('main-menu').classList.add('hidden');
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('touch-controls').classList.remove('hidden');
   gameState = 'playing';
+  weapons.setVisible(true);
+  showMissionBanner();
 }
 
 function bindUI() {
@@ -201,22 +310,26 @@ function bindUI() {
   loadingScreen.classList.add('hidden');
   mainMenu.classList.remove('hidden');
   gameState = 'menu';
+  weapons.setVisible(false);
 
   const startPlay = async () => {
     audio.unlock();
     input.requestFullscreenLandscape();
     if (gameState === 'menu') {
-      // Ensure selected difficulty applies cleanly on fresh deploy
+      village?.resetMedkits();
       await enemySys.spawnVillageSquad(village, settings.difficulty);
       totalEnemies = enemySys.getRemainingCount();
       player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
       weapons.resetAll();
+      damageHits.length = 0;
     }
     mainMenu.classList.add('hidden');
     hud.classList.remove('hidden');
     touchControls.classList.remove('hidden');
     document.getElementById('btn-restart-menu').classList.remove('hidden');
     gameState = 'playing';
+    weapons.setVisible(true);
+    showMissionBanner();
   };
 
   document.getElementById('btn-deploy').addEventListener('click', startPlay);
@@ -228,14 +341,21 @@ function bindUI() {
     mainMenu.classList.remove('hidden');
     document.getElementById('btn-resume').classList.add('hidden');
     gameState = 'menu';
+    weapons.setVisible(false);
   });
 
   document.getElementById('btn-pause-hud').addEventListener('click', () => {
+    input.clearActiveInputs();
+    if (Math.abs(engine.camera.fov - 72) > 0.1) {
+      engine.camera.fov = 72;
+      engine.camera.updateProjectionMatrix();
+    }
     hud.classList.add('hidden');
     touchControls.classList.add('hidden');
     mainMenu.classList.remove('hidden');
     document.getElementById('btn-resume').classList.remove('hidden');
     gameState = 'paused';
+    weapons.setVisible(false);
   });
 
   document.getElementById('btn-open-settings').addEventListener('click', () => {
@@ -244,6 +364,14 @@ function bindUI() {
   });
   document.getElementById('btn-close-settings').addEventListener('click', () => {
     settingsModal.classList.add('hidden');
+  });
+
+  document.getElementById('btn-open-hud-editor').addEventListener('click', () => {
+    settingsModal.classList.add('hidden');
+    input.openHudEditor((updatedSettings) => {
+      saveSettings(updatedSettings);
+      settingsModal.classList.remove('hidden');
+    });
   });
 
   document.getElementById('btn-open-loadout').addEventListener('click', () => {
@@ -273,23 +401,25 @@ function bindUI() {
   const setSens = document.getElementById('set-sensitivity');
   const setGyroSens = document.getElementById('set-gyro-sens');
   const setGyroEnabled = document.getElementById('set-gyro-enabled');
+  const setAdsHold = document.getElementById('set-ads-hold');
   const setRes = document.getElementById('set-res-scale');
   const setQual = document.getElementById('set-quality');
   const setFps = document.getElementById('set-fps-cap');
   const setVol = document.getElementById('set-volume');
   const setBtnSize = document.getElementById('set-btn-size');
-  const setBtnOff = document.getElementById('set-btn-offset');
+  const setHudOpacity = document.getElementById('set-hud-opacity');
   const setDebug = document.getElementById('set-debug');
 
   setSens.value = settings.sensitivity;
   setGyroSens.value = settings.gyroSensitivity;
   setGyroEnabled.checked = settings.gyroEnabled;
+  setAdsHold.checked = settings.adsHold !== false;
   setRes.value = settings.resolutionScale;
   setQual.value = settings.quality;
   setFps.value = String(settings.fpsCap);
   setVol.value = settings.volume;
   setBtnSize.value = settings.buttonSize;
-  setBtnOff.value = settings.buttonOffset;
+  setHudOpacity.value = settings.hudOpacity ?? 0.9;
   setDebug.checked = settings.showDebug;
 
   const syncLabels = () => {
@@ -298,7 +428,7 @@ function bindUI() {
     document.getElementById('val-res-scale').textContent = Number(settings.resolutionScale).toFixed(2);
     document.getElementById('val-volume').textContent = `${Math.round(settings.volume * 100)}%`;
     document.getElementById('val-btn-size').textContent = `${Number(settings.buttonSize).toFixed(2)}x`;
-    document.getElementById('val-btn-offset').textContent = `${settings.buttonOffset}px`;
+    document.getElementById('val-hud-opacity').textContent = `${Math.round((settings.hudOpacity ?? 0.9) * 100)}%`;
     const cap = Number(settings.fpsCap);
     document.getElementById('hz-info').textContent =
       cap > engine.detectedHz
@@ -311,12 +441,13 @@ function bindUI() {
     settings.sensitivity = Number(setSens.value);
     settings.gyroSensitivity = Number(setGyroSens.value);
     settings.gyroEnabled = setGyroEnabled.checked;
+    settings.adsHold = setAdsHold.checked;
     settings.resolutionScale = Number(setRes.value);
     settings.quality = setQual.value;
     settings.fpsCap = Number(setFps.value);
     settings.volume = Number(setVol.value);
     settings.buttonSize = Number(setBtnSize.value);
-    settings.buttonOffset = Number(setBtnOff.value);
+    settings.hudOpacity = Number(setHudOpacity.value);
     settings.showDebug = setDebug.checked;
     saveSettings(settings);
     engine.applySettings(settings);
@@ -325,7 +456,7 @@ function bindUI() {
     syncLabels();
   };
 
-  [setSens, setGyroSens, setGyroEnabled, setRes, setQual, setFps, setVol, setBtnSize, setBtnOff, setDebug].forEach((el) =>
+  [setSens, setGyroSens, setGyroEnabled, setAdsHold, setRes, setQual, setFps, setVol, setBtnSize, setHudOpacity, setDebug].forEach((el) =>
     el.addEventListener('input', onChange)
   );
 }
@@ -357,8 +488,6 @@ async function boot() {
 
       input.pollKeyboardMovement();
       const cmd = input.consumePulses();
-      player.yaw -= cmd.lookDX;
-      player.pitch = THREE.MathUtils.clamp(player.pitch - cmd.lookDY, -1.42, 1.42);
 
       player.step(dt, cmd, (feetPos) => {
         const key = audio.isIndoors
@@ -366,6 +495,12 @@ async function boot() {
           : (Math.random() < 0.5 ? 'step_sand1' : 'step_sand2');
         audio.playClip(key, feetPos, 0.42, 0.08);
       });
+
+      const healed = village ? village.updateMedkits(dt, player.getFeetPosition(), player) : 0;
+      if (healed > 0) {
+        audio.playPickup();
+        showMedkitToast(healed);
+      }
 
       doorSystem.step(dt);
       nearestDoor = doorSystem.findNearestInteractable(player.getFeetPosition());
@@ -379,7 +514,7 @@ async function boot() {
         cmd,
         player,
         (enemy, dmg, hitPt, dir) => {
-          hitStopTimer = 0.038;
+          hitStopTimer = 0.036;
           enemySys.damageEnemy(enemy, dmg, hitPt, dir);
           if (enemySys.getRemainingCount() === 0) {
             finishMission(true);
@@ -404,15 +539,32 @@ async function boot() {
         damageFlashTimer -= renderDt;
         if (damageFlashTimer <= 0) {
           document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
-          document.getElementById('damage-arrow').classList.add('hidden');
         }
       }
+      if (missionBannerTimer > 0) {
+        missionBannerTimer -= renderDt;
+        if (missionBannerTimer <= 0) document.getElementById('mission-banner').classList.add('hidden');
+      }
+      if (medkitToastTimer > 0) {
+        medkitToastTimer -= renderDt;
+        if (medkitToastTimer <= 0) document.getElementById('medkit-toast').classList.add('hidden');
+      }
+
+      weapons.setVisible(gameState === 'playing');
 
       if (gameState === 'playing') {
+        // Apply touch & gyro camera rotation smoothly every render frame!
+        const look = input.consumeLook();
+        player.yaw -= look.dx;
+        player.pitch = THREE.MathUtils.clamp(player.pitch - look.dy, -1.42, 1.42);
+
         physics.interpolate(alpha);
         player.applyCamera(alpha);
         engine.updateShadowFocus(player.currPos);
         if (village) engine.enforceTriangleBudget([...village.lodObjects, ...enemySys.lodObjects]);
+
+        updateDynamicDamageIndicators(renderDt);
+        updateCompassThreats();
 
         const fwd = player.getAimDirection();
         audio.updateListener(engine.camera.position, fwd, new THREE.Vector3(0, 1, 0));
@@ -421,7 +573,7 @@ async function boot() {
         document.getElementById('fps-counter').textContent = `FPS: ${engine.fps} | Hz: ${engine.detectedHz}`;
         const debugEl = document.getElementById('debug-tris');
         debugEl.classList.toggle('hidden', !settings.showDebug);
-        debugEl.textContent = `TRIS: ${engine.triangles.toLocaleString()} / ${(MAX_TRIANGLES / 1000).toFixed(0)}k`;
+        debugEl.textContent = `TRIS: ${engine.triangles.toLocaleString()} / ${(MAX_TRIANGLES / 1000).toFixed(0)}k | CALLS: ${engine.drawCalls}`;
 
         // Compass & Zone
         const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);

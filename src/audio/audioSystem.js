@@ -55,48 +55,59 @@ export class AudioSystem {
     this.masterGain.gain.value = this.settings.volume ?? 0.8;
     this.masterGain.connect(ctx.destination);
 
+    // Subtle stereo master bus
     this.sfxBus = ctx.createGain();
     this.sfxBus.gain.value = 1.0;
     this.sfxBus.connect(this.masterGain);
 
-    // Outdoor slapback delay bus (dry sharp + distant slapback echo from buildings)
+    // Outdoor wide stereo slapback bus (L/R offset early building echoes!)
     this.outdoorBus = ctx.createGain();
     this.outdoorBus.gain.value = 1.0;
 
-    const slapDelay1 = ctx.createDelay(0.6);
-    slapDelay1.delayTime.value = 0.165;
-    const slapFilter1 = ctx.createBiquadFilter();
-    slapFilter1.type = 'lowpass';
-    slapFilter1.frequency.value = 1750;
-    const slapGain1 = ctx.createGain();
-    slapGain1.gain.value = 0.28;
-
-    const slapDelay2 = ctx.createDelay(0.6);
-    slapDelay2.delayTime.value = 0.31;
-    const slapGain2 = ctx.createGain();
-    slapGain2.gain.value = 0.13;
+    const slapL = ctx.createDelay(0.6);
+    slapL.delayTime.value = 0.14;
+    const slapR = ctx.createDelay(0.6);
+    slapR.delayTime.value = 0.21;
+    const slapLP = ctx.createBiquadFilter();
+    slapLP.type = 'lowpass';
+    slapLP.frequency.value = 1950;
+    const panL = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    const panR = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+    if (panL) panL.pan.value = -0.68;
+    if (panR) panR.pan.value = 0.68;
+    const gL = ctx.createGain();
+    gL.gain.value = 0.24;
+    const gR = ctx.createGain();
+    gR.gain.value = 0.18;
 
     this.outdoorBus.connect(this.sfxBus);
-    this.outdoorBus.connect(slapDelay1);
-    slapDelay1.connect(slapFilter1);
-    slapFilter1.connect(slapGain1);
-    slapGain1.connect(this.sfxBus);
-    slapFilter1.connect(slapDelay2);
-    slapDelay2.connect(slapGain2);
-    slapGain2.connect(this.sfxBus);
+    this.outdoorBus.connect(slapLP);
+    slapLP.connect(slapL);
+    slapLP.connect(slapR);
+    if (panL && panR) {
+      slapL.connect(panL);
+      panL.connect(gL);
+      slapR.connect(panR);
+      panR.connect(gR);
+    } else {
+      slapL.connect(gL);
+      slapR.connect(gR);
+    }
+    gL.connect(this.sfxBus);
+    gR.connect(this.sfxBus);
 
-    // Indoor dense short boomy reverb bus (ConvolverNode)
+    // Indoor true-stereo ConvolverNode room reverb bus
     this.indoorBus = ctx.createGain();
     this.indoorBus.gain.value = 0.0;
 
     const convolver = ctx.createConvolver();
-    convolver.buffer = this._createIndoorImpulse(0.85, 3.8);
+    convolver.buffer = this._createIndoorImpulse(0.9, 3.6);
     const indoorBoost = ctx.createBiquadFilter();
     indoorBoost.type = 'lowshelf';
     indoorBoost.frequency.value = 260;
-    indoorBoost.gain.value = 5.5;
+    indoorBoost.gain.value = 5.0;
     const wetGain = ctx.createGain();
-    wetGain.gain.value = 0.95;
+    wetGain.gain.value = 1.05;
 
     this.indoorBus.connect(indoorBoost);
     indoorBoost.connect(this.sfxBus);
@@ -104,7 +115,7 @@ export class AudioSystem {
     convolver.connect(wetGain);
     wetGain.connect(this.sfxBus);
 
-    // Ambience chain
+    // Ambience stereo chain
     this.ambienceFilter = ctx.createBiquadFilter();
     this.ambienceFilter.type = 'lowpass';
     this.ambienceFilter.frequency.value = 16000;
@@ -117,14 +128,17 @@ export class AudioSystem {
   _createIndoorImpulse(duration, decay) {
     const ctx = this.ctx;
     const len = Math.floor(ctx.sampleRate * duration);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) {
-      const t = i / len;
-      const env = Math.pow(1 - t, decay);
-      // Early reflection density spikes + diffused noise tail
-      const early = i < ctx.sampleRate * 0.08 && i % 240 < 14 ? 1.5 : 1.0;
-      data[i] = (Math.random() * 2 - 1) * env * early * 0.65;
+    // True 2-channel decorrelated stereo impulse for spacious room localization
+    const buf = ctx.createBuffer(2, len, ctx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const data = buf.getChannelData(ch);
+      const stride = ch === 0 ? 211 : 277;
+      for (let i = 0; i < len; i++) {
+        const t = i / len;
+        const env = Math.pow(1 - t, decay);
+        const early = i < ctx.sampleRate * 0.09 && (i % stride) < 16 ? 1.55 : 1.0;
+        data[i] = (Math.random() * 2 - 1) * env * early * 0.65;
+      }
     }
     return buf;
   }
@@ -213,29 +227,30 @@ export class AudioSystem {
 
   _createPanner(pos) {
     const p = this.ctx.createPanner();
-    p.panningModel = 'equalpower';
+    // Full HRTF spatialization for clear stereo azimuth/elevation enemy localization
+    p.panningModel = 'HRTF';
     p.distanceModel = 'inverse';
-    p.refDistance = 2.8;
-    p.maxDistance = 85;
-    p.rolloffFactor = 1.1;
+    p.refDistance = 3.5;
+    p.maxDistance = 90;
+    p.rolloffFactor = 0.92;
     p.positionX.setValueAtTime(pos.x, this.ctx.currentTime);
     p.positionY.setValueAtTime(pos.y, this.ctx.currentTime);
     p.positionZ.setValueAtTime(pos.z, this.ctx.currentTime);
     return p;
   }
 
-  _routeNode(sourceNode, pos, gainVal = 1.0, useZoneBus = true) {
+  _routeNode(sourceNode, pos, gainVal = 1.0, useZoneBus = true, stereoPan = 0) {
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const g = ctx.createGain();
     const occluded = pos ? this._isOccluded(pos) : false;
-    g.gain.value = occluded ? gainVal * 0.36 : gainVal;
+    g.gain.value = occluded ? gainVal * 0.38 : gainVal;
 
     let tail = sourceNode;
     if (occluded) {
       const lpf = ctx.createBiquadFilter();
       lpf.type = 'lowpass';
-      lpf.frequency.setValueAtTime(640, t);
+      lpf.frequency.setValueAtTime(680, t);
       tail.connect(lpf);
       tail = lpf;
     }
@@ -250,11 +265,20 @@ export class AudioSystem {
       } else {
         panner.connect(this.sfxBus);
       }
-    } else if (useZoneBus) {
-      g.connect(this.outdoorBus);
-      g.connect(this.indoorBus);
     } else {
-      g.connect(this.sfxBus);
+      let outNode = g;
+      if (stereoPan !== 0 && ctx.createStereoPanner) {
+        const sp = ctx.createStereoPanner();
+        sp.pan.setValueAtTime(stereoPan, t);
+        g.connect(sp);
+        outNode = sp;
+      }
+      if (useZoneBus) {
+        outNode.connect(this.outdoorBus);
+        outNode.connect(this.indoorBus);
+      } else {
+        outNode.connect(this.sfxBus);
+      }
     }
   }
 
@@ -265,7 +289,7 @@ export class AudioSystem {
     const pitchVar = 0.94 + Math.random() * 0.12;
     const sourcePos = isPlayer ? null : pos;
 
-    // Layer 1: Crack (sharp high-mid snap)
+    // Layer 1: Wide Stereo Mechanical & Chamber Crack (subtle player right-hand grip stereo presence)
     const crackNoise = ctx.createBufferSource();
     crackNoise.buffer = this._noiseBuffer(0.055);
     const crackHp = ctx.createBiquadFilter();
@@ -273,20 +297,20 @@ export class AudioSystem {
     crackHp.frequency.value = weaponId === 'pistol' ? 2800 : 2100;
     crackHp.Q.value = 1.1;
     const crackEnv = ctx.createGain();
-    crackEnv.gain.setValueAtTime(isPlayer ? 0.55 : 0.42, t);
+    crackEnv.gain.setValueAtTime(isPlayer ? 0.56 : 0.44, t);
     crackEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
     crackNoise.connect(crackHp);
     crackHp.connect(crackEnv);
-    this._routeNode(crackEnv, sourcePos, 1.0, true);
+    this._routeNode(crackEnv, sourcePos, 1.0, true, isPlayer ? 0.12 : 0);
     crackNoise.start(t);
 
-    // Layer 2: Body (real OGG firearm sample or punch synth)
+    // Layer 2: Punchy Body Sample
     const buf = this.buffers.get(`${weaponId}_fire`);
     if (buf) {
       const bodySrc = ctx.createBufferSource();
       bodySrc.buffer = buf;
       bodySrc.playbackRate.value = pitchVar;
-      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.95 : 0.78, true);
+      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.96 : 0.8, true, isPlayer ? 0.05 : 0);
       bodySrc.start(t);
     } else {
       const osc = ctx.createOscillator();
@@ -302,25 +326,41 @@ export class AudioSystem {
       osc.stop(t + 0.15);
     }
 
-    // Layer 3: Tail (low-mid thump tail feeding indoor reverb / outdoor slapback)
+    // Layer 3: Wide Bass Tail (Haas-widened left-offset echo for first-person fullness)
     const tailSrc = ctx.createBufferSource();
     tailSrc.buffer = this._noiseBuffer(0.24);
     const tailLp = ctx.createBiquadFilter();
     tailLp.type = 'lowpass';
-    tailLp.frequency.value = weaponId === 'akm' ? 680 : 880;
+    tailLp.frequency.value = weaponId === 'akm' ? 720 : 920;
     const tailEnv = ctx.createGain();
     tailEnv.gain.setValueAtTime(0.32, t);
     tailEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
     tailSrc.connect(tailLp);
     tailLp.connect(tailEnv);
-    this._routeNode(tailEnv, sourcePos, 0.9, true);
+    this._routeNode(tailEnv, sourcePos, 0.9, true, isPlayer ? -0.14 : 0);
     tailSrc.start(t);
 
-    // Close indoor gunfire: subtle ear-ring ducking
     const dist = sourcePos ? Math.hypot(sourcePos.x - this.listenerPos.x, sourcePos.z - this.listenerPos.z) : 0;
     if (this.isIndoors && (isPlayer || dist < 6.5)) {
       this._triggerEarDuck();
     }
+  }
+
+  playPickup() {
+    if (!this.ctx || !this.unlocked) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(520, t);
+    osc.frequency.exponentialRampToValueAtTime(880, t + 0.14);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.24, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.connect(g);
+    g.connect(this.masterGain);
+    osc.start(t);
+    osc.stop(t + 0.24);
   }
 
   _triggerEarDuck() {
@@ -330,17 +370,16 @@ export class AudioSystem {
     this.sfxBus.gain.setValueAtTime(0.58, t);
     this.sfxBus.gain.linearRampToValueAtTime(1.0, t + 0.48);
 
-    // Subtle 3.6 kHz tinnitus ring
     const ring = ctx.createOscillator();
     ring.type = 'sine';
     ring.frequency.value = 3650;
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.022, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.72);
+    g.gain.setValueAtTime(0.018, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.65);
     ring.connect(g);
     g.connect(this.masterGain);
     ring.start(t);
-    ring.stop(t + 0.74);
+    ring.stop(t + 0.68);
   }
 
   playClip(key, pos = null, gain = 0.7, pitchJitter = 0.06) {
