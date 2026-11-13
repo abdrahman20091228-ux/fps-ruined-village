@@ -1,17 +1,17 @@
 # Project Progress
 
-## Status: Phase 3 Complete — Moving to Phase 4 (Ruined Village Layout, Houses & LOD)
+## Status: Phases 4, 5 & 6 Verified — Deploying Phase 7 to GitHub Pages
 
 ### Completed
 - **Phase 1**: Core Three.js + Rapier3D 60 Hz engine, FPS controller, doors, physics props, landscape enforcement.
-- **Phase 2**: WeaponSystem (M4 Carbine, AKM 7.62, M9 Pistol), recoil, penetration FX, decals, 14 real CC0 OGG/Opus audio clips (`0.15 MB`), 3D positional audio + indoor/outdoor acoustics.
-- **Phase 3**: `ART_BIBLE.md`, `CREDITS.md`, 7 seamless 3×3-verified tileable WebP textures (`concrete`, `brick`, `plaster`, `wood`, `dirt`, `metal`, `roof_tiles` = `1.57 MB`), 15 Meshopt/WebP-compressed CC0 GLB models (`pistol`, `akm`, `m4`, `soldier` + LOD1/LOD2, `wreck_car`, `road_barrier`, `mil_crate`, `barrel`, `ammo_box`, `dead_tree1/2`, `ruin_shell1/2` = `2.22 MB`), `AssetLoader` with Cache Storage API + real-byte streaming, and single-pass ACES + grade/vignette/grain post shader. Total build size: `4.06 MB` / `60 MB` budget.
+- **Phase 2**: WeaponSystem (M4, AKM, Pistol), recoil, penetration FX, decals, 14 real CC0 OGG/Opus audio clips (`0.15 MB`), 3D positional audio + indoor/outdoor acoustics.
+- **Phase 3**: `ART_BIBLE.md`, `CREDITS.md`, 7 seamless 3×3 WebP textures (`1.57 MB`), 15 Meshopt/WebP CC0 GLB models (`2.22 MB`), `AssetLoader` with Cache Storage API, ACES post-grade shader.
+- **Phase 4**: `VillageBuilder` with 8 ruined houses (walkable interiors, breached walls, roof holes, openable doors, merged geometry + 3-level `THREE.LOD`), `InstancedMesh` rubble, CC0 car wrecks, barriers, crates/barrels, dead trees with billboard LODs, waypoint graph.
+- **Phase 5**: `EnemySystem` with 12 enemies (9 across 6 houses + 3 outdoors), shared rigged skeleton + 3 muted uniform variants + 3 LODs, `Idle/Walk/Run`/flinch/collapse animations, vision cone + raycast + hearing + A* navigation, 3 difficulties, far-enemy throttling.
+- **Phase 6**: Polished tactical Main Menu with live 3D village camera pan, byte-progress loading screen driven by `assets-manifest.json` + Cache Storage API + mobile-data gate + retry on error, customizable touch HUD, Settings modal, FPS capper (`30/60/90/120`) with Hz detection, fixed `SkinnedMesh` weapon viewmodels and portrait orientation lock.
 
 ### Remaining
-- Phase 4: Ruined village layout (8 destroyed houses with walkable interiors, alleys, yards, rubble, vehicle wrecks, dead trees), `THREE.LOD`, `InstancedMesh` rubble/props, merged static house geometry, distance/frustum culling, and `< 500k` triangle budget enforcement.
-- Phase 5: Enemies (`<= 12k` tris + LOD1/LOD2), animations (`Idle`, `Walk`, `Run`, `aim/shoot/hit/death`), AI state machine, hand-authored waypoint graphs + A*, difficulty modes.
-- Phase 6: Loading screen with manifest breakdown + byte progress + Cache API + mobile-data prompt, polished Main Menu, customizable HUD & controls.
-- Phase 7: GitHub Pages deploy, mobile landscape play-test locally & live, screenshots, polish.
+- Phase 7: Enable GitHub Pages on `main` root and run live mobile landscape verification from GitHub Pages URL.
 
 ### Next Step
-- Build `src/world/villageBuilder.js` with 8 ruined houses, rubble, props, vehicle wrecks, dead trees, indoor zones, waypoint graphs, and 3-level LODs.
+- Commit & push Phases 4–6, enable GitHub Pages, and play-test the live URL.

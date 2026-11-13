@@ -43,8 +43,8 @@ export const WEAPON_DEFS = {
       { p: 0.036, y: -0.013 },
       { p: 0.042, y: 0.015 },
     ],
-    hipPos: new THREE.Vector3(0.24, -0.23, -0.44),
-    adsPos: new THREE.Vector3(0.0, -0.145, -0.34),
+    hipPos: new THREE.Vector3(0.175, -0.155, -0.35),
+    adsPos: new THREE.Vector3(0.0, -0.095, -0.26),
   },
   m4: {
     id: 'm4',
@@ -66,8 +66,8 @@ export const WEAPON_DEFS = {
       { p: 0.024, y: -0.006 },
       { p: 0.027, y: 0.005 },
     ],
-    hipPos: new THREE.Vector3(0.24, -0.22, -0.42),
-    adsPos: new THREE.Vector3(0.0, -0.14, -0.32),
+    hipPos: new THREE.Vector3(0.175, -0.15, -0.34),
+    adsPos: new THREE.Vector3(0.0, -0.095, -0.26),
   },
 };
 
@@ -137,23 +137,30 @@ export class WeaponSystem {
   }
 
   _buildDefaultViewmodels() {
-    const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x4b5142, roughness: 0.9 });
-    const gloveMat = new THREE.MeshStandardMaterial({ color: 0x262729, roughness: 0.85 });
-    const gunmetal = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.45, metalness: 0.72 });
-    const woodStock = new THREE.MeshStandardMaterial({ color: 0x5c3c24, roughness: 0.82 });
-    const polymer = new THREE.MeshStandardMaterial({ color: 0x1e2022, roughness: 0.72, metalness: 0.2 });
+    const sleeveMat = new THREE.MeshStandardMaterial({ color: 0x4f5546, roughness: 0.88, metalness: 0.04 });
+    const gloveMat = new THREE.MeshStandardMaterial({ color: 0x2d2f31, roughness: 0.82, metalness: 0.08 });
+    const gunmetal = new THREE.MeshStandardMaterial({ color: 0x35393e, roughness: 0.45, metalness: 0.65 });
+    const woodStock = new THREE.MeshStandardMaterial({ color: 0x624127, roughness: 0.8 });
+    const polymer = new THREE.MeshStandardMaterial({ color: 0x232629, roughness: 0.68, metalness: 0.18 });
 
-    // Visible arms (sleeve + forearm + gloved hand)
-    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.085, 0.36), sleeveMat);
-    rightArm.position.set(0.07, -0.09, 0.24);
-    rightArm.rotation.set(0.18, -0.12, 0);
-    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.082, 0.082, 0.38), sleeveMat);
-    leftArm.position.set(-0.11, -0.1, 0.16);
-    leftArm.rotation.set(0.22, 0.36, 0);
-    const rightHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.07, 0.09), gloveMat);
-    rightHand.position.set(0.01, -0.05, 0.07);
-    const leftHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.065, 0.09), gloveMat);
-    leftHand.position.set(-0.02, -0.04, -0.14);
+    // Tapered tactical forearms & gloved hands tucked cleanly at grip + handguard
+    const armGeo = new THREE.CylinderGeometry(0.028, 0.038, 0.34, 8);
+    armGeo.rotateX(Math.PI / 2);
+
+    const rightArm = new THREE.Mesh(armGeo, sleeveMat);
+    rightArm.position.set(0.095, -0.115, 0.21);
+    rightArm.rotation.set(0.20, -0.28, 0);
+
+    const leftArm = new THREE.Mesh(armGeo, sleeveMat);
+    leftArm.position.set(-0.14, -0.125, 0.13);
+    leftArm.rotation.set(0.26, 0.56, 0);
+
+    const handGeo = new THREE.CylinderGeometry(0.022, 0.025, 0.06, 8);
+    handGeo.rotateX(Math.PI / 2);
+    const rightHand = new THREE.Mesh(handGeo, gloveMat);
+    rightHand.position.set(0.008, -0.045, 0.055);
+    const leftHand = new THREE.Mesh(handGeo, gloveMat);
+    leftHand.position.set(-0.008, -0.022, -0.105);
     this.viewmodelRoot.add(rightArm, leftArm, rightHand, leftHand);
 
     // Muzzle flash sprite
@@ -165,7 +172,7 @@ export class WeaponSystem {
     });
     this.muzzleFlashSprite = new THREE.Sprite(flashMat);
     this.muzzleFlashSprite.scale.set(0.16, 0.16, 1);
-    this.muzzleFlashSprite.position.set(0, 0.03, -0.56);
+    this.muzzleFlashSprite.position.set(0, 0.03, -0.44);
     this.viewmodelRoot.add(this.muzzleFlashSprite);
 
     // Pistol fallback geometry
@@ -219,14 +226,22 @@ export class WeaponSystem {
       if (c.isMesh) {
         c.castShadow = false;
         c.receiveShadow = false;
+        c.frustumCulled = false;
+        if (c.material) {
+          c.material.roughness = Math.max(0.46, c.material.roughness ?? 0.55);
+          c.material.metalness = Math.min(0.38, c.material.metalness ?? 0.25);
+          if (c.material.emissive) c.material.emissive.setHex(0x101214);
+        }
       }
     });
-    // Normalize weapon size to ~0.55m rifle / ~0.22m pistol pointing -Z
+    modelScene.updateMatrixWorld(true);
+
+    // Measure posed bounding box so SkinnedMesh bone orientation is respected
     const box = new THREE.Box3().setFromObject(modelScene);
     const size = new THREE.Vector3();
     box.getSize(size);
     const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-    const targetLen = id === 'pistol' ? 0.24 : 0.62;
+    const targetLen = id === 'pistol' ? 0.23 : 0.56;
     const scale = targetLen / maxDim;
     modelScene.scale.setScalar(scale);
 
@@ -234,10 +249,11 @@ export class WeaponSystem {
     if (size.x > size.z) {
       modelScene.rotation.y = Math.PI / 2;
     }
+    modelScene.updateMatrixWorld(true);
     const center = new THREE.Vector3();
     new THREE.Box3().setFromObject(modelScene).getCenter(center);
     modelScene.position.sub(center);
-    modelScene.position.z -= targetLen * 0.25;
+    modelScene.position.z -= targetLen * 0.14;
 
     wrapper.add(modelScene);
     wrapper.visible = id === this.activeDef.id;

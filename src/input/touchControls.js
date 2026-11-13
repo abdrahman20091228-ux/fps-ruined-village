@@ -87,7 +87,7 @@ export class InputManager {
       this._notifyFirstGesture();
       if (this._joyPointerId !== null) return;
       this._joyPointerId = e.pointerId;
-      joyZone.setPointerCapture(e.pointerId);
+      try { joyZone.setPointerCapture(e.pointerId); } catch {}
       const rect = joyZone.getBoundingClientRect();
       this._joyOrigin = { x: e.clientX, y: e.clientY };
       joyBase.style.left = `${e.clientX - rect.left}px`;
@@ -124,15 +124,17 @@ export class InputManager {
       this._notifyFirstGesture();
       if (this._lookPointerId !== null) return;
       this._lookPointerId = e.pointerId;
-      lookZone.setPointerCapture(e.pointerId);
       this._lookLast = { x: e.clientX, y: e.clientY };
+      try { lookZone.setPointerCapture(e.pointerId); } catch {}
     });
 
     lookZone.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this._lookPointerId) return;
       const sens = 0.0042 * (this.settings.sensitivity || 1.0);
-      this.state.lookDX += (e.clientX - this._lookLast.x) * sens;
-      this.state.lookDY += (e.clientY - this._lookLast.y) * sens;
+      const dx = Math.max(-160, Math.min(160, e.clientX - this._lookLast.x));
+      const dy = Math.max(-160, Math.min(160, e.clientY - this._lookLast.y));
+      this.state.lookDX += dx * sens;
+      this.state.lookDY += dy * sens;
       this._lookLast = { x: e.clientX, y: e.clientY };
     });
 

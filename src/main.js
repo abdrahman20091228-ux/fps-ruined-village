@@ -2,27 +2,36 @@ import * as THREE from 'three';
 import { loadSettings, saveSettings, MAX_TRIANGLES } from './core/config.js';
 import { GameEngine } from './core/engine.js';
 import { PhysicsWorld } from './core/physics.js';
+import { AssetLoader } from './core/assetLoader.js';
 import { PlayerController } from './player/controller.js';
 import { InputManager } from './input/touchControls.js';
 import { DoorSystem } from './world/doors.js';
+import { VillageBuilder } from './world/villageBuilder.js';
 import { EffectsSystem } from './fx/effects.js';
 import { AudioSystem } from './audio/audioSystem.js';
 import { WeaponSystem } from './weapons/weapons.js';
+import { EnemySystem } from './ai/enemySystem.js';
 
 const settings = loadSettings();
 const canvas = document.getElementById('game-canvas');
 const engine = new GameEngine(canvas, settings);
 const physics = new PhysicsWorld();
+const assets = new AssetLoader();
 const player = new PlayerController(physics, engine.camera);
 const doorSystem = new DoorSystem(engine.scene, physics);
 const effects = new EffectsSystem(engine.scene);
 const audio = new AudioSystem(physics, settings);
 const weapons = new WeaponSystem(engine.camera, physics, effects, audio);
+const enemySys = new EnemySystem(engine.scene, physics, assets, effects, audio);
 
+let village = null;
+let totalEnemies = 0;
 let gameState = 'loading'; // loading | menu | playing | paused | ended
-let activeTestStageBuilt = false;
 let hitStopTimer = 0;
 let hitMarkerTimer = 0;
+let damageFlashTimer = 0;
+let lastDamageYaw = 0;
+let worldBuilt = false;
 
 const AUDIO_CLIPS = {
   pistol_fire: './assets/audio/pistol_fire.ogg',
@@ -45,93 +54,140 @@ const input = new InputManager(settings, () => {
   audio.unlock();
 });
 
+function fmtMB(bytes) {
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 function showHitMarker() {
   hitMarkerTimer = 0.14;
   document.getElementById('hit-marker').classList.remove('hidden');
 }
 
-function buildPhase1Sandbox() {
-  if (activeTestStageBuilt) return;
-  activeTestStageBuilt = true;
+function onPlayerDamaged(amount, sourcePos) {
+  if (gameState !== 'playing') return;
+  player.health = Math.max(0, player.health - amount);
+  damageFlashTimer = 0.42;
 
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x5d574a, roughness: 0.94 });
-  const wallMat = new THREE.MeshStandardMaterial({ color: 0x77736a, roughness: 0.9 });
-  const woodMat = new THREE.MeshStandardMaterial({ color: 0x6e563f, roughness: 0.85 });
+  const dx = sourcePos.x - player.currPos.x;
+  const dz = sourcePos.z - player.currPos.z;
+  const worldAngle = Math.atan2(dx, dz);
+  lastDamageYaw = worldAngle - player.yaw;
 
-  // Ground
-  const ground = new THREE.Mesh(new THREE.BoxGeometry(80, 1, 80), groundMat);
-  ground.position.set(0, -0.5, 0);
-  ground.receiveShadow = true;
-  engine.scene.add(ground);
-  physics.addStaticBox({ x: 0, y: -0.5, z: 0 }, { x: 40, y: 0.5, z: 40 }, null, { material: 'dirt', kind: 'terrain' });
+  const vig = document.getElementById('damage-vignette');
+  vig.style.boxShadow = 'inset 0 0 95px rgba(188, 34, 24, 0.72)';
 
-  // Test room with doorway + roof (indoor audio test zone!)
-  const walls = [
-    { pos: { x: -4.5, y: 1.6, z: -8 }, half: { x: 2.0, y: 1.6, z: 0.2 }, mat: 'concrete', pen: false },
-    { pos: { x: 1.5, y: 1.6, z: -8 }, half: { x: 2.0, y: 1.6, z: 0.2 }, mat: 'concrete', pen: false },
-    { pos: { x: -1.5, y: 2.75, z: -8 }, half: { x: 1.0, y: 0.45, z: 0.2 }, mat: 'plaster', pen: true },
-    { pos: { x: -6.5, y: 1.6, z: -11 }, half: { x: 0.2, y: 1.6, z: 3.0 }, mat: 'plaster', pen: true },
-    { pos: { x: 3.5, y: 1.6, z: -11 }, half: { x: 0.2, y: 1.6, z: 3.0 }, mat: 'plaster', pen: true },
-    { pos: { x: -1.5, y: 1.6, z: -14 }, half: { x: 5.0, y: 1.6, z: 0.2 }, mat: 'concrete', pen: false },
-    { pos: { x: -1.5, y: 3.3, z: -11 }, half: { x: 5.2, y: 0.15, z: 3.2 }, mat: 'wood', pen: true },
-  ];
-  for (const w of walls) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(w.half.x * 2, w.half.y * 2, w.half.z * 2),
-      w.mat === 'wood' ? woodMat : wallMat
-    );
-    m.position.set(w.pos.x, w.pos.y, w.pos.z);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    engine.scene.add(m);
-    physics.addStaticBox(w.pos, w.half, null, { material: w.mat, kind: 'wall', penetrable: w.pen });
+  const arrow = document.getElementById('damage-arrow');
+  arrow.classList.remove('hidden');
+  arrow.style.transform = `rotate(${Math.round((-lastDamageYaw * 180) / Math.PI)}deg)`;
+
+  if (player.health <= 0) {
+    finishMission(false);
+  }
+}
+
+function finishMission(victory) {
+  gameState = 'ended';
+  document.getElementById('hud').classList.add('hidden');
+  document.getElementById('touch-controls').classList.add('hidden');
+  document.getElementById('end-screen').classList.remove('hidden');
+  document.getElementById('end-badge').textContent = victory ? 'MISSION ACCOMPLISHED' : 'MIA // OPERATIVE DOWN';
+  document.getElementById('end-title').textContent = victory ? 'VILLAGE SECURED' : 'ASSAULT FAILED';
+  const remaining = enemySys.getRemainingCount();
+  document.getElementById('end-summary').textContent = victory
+    ? `All ${totalEnemies} hostiles neutralized on ${settings.difficulty.toUpperCase()} difficulty.`
+    : `${remaining} of ${totalEnemies} hostiles remained active.`;
+}
+
+async function runManifestLoadingFlow() {
+  const errorBox = document.getElementById('loading-error-box');
+  const errorText = document.getElementById('loading-error-text');
+  const statusEl = document.getElementById('loading-status-text');
+  const bytesEl = document.getElementById('loading-bytes-text');
+  const barEl = document.getElementById('loading-progress-bar');
+  const breakdownEl = document.getElementById('loading-breakdown');
+  const cacheInfoEl = document.getElementById('loading-cache-info');
+  const dataWarn = document.getElementById('mobile-data-warning');
+  const dataWarnText = document.getElementById('mobile-data-text');
+
+  errorBox.classList.add('hidden');
+  statusEl.textContent = 'Fetching manifest...';
+
+  const manifest = await assets.fetchManifest();
+  const cats = manifest.categories || {};
+  breakdownEl.textContent =
+    `Models ${fmtMB(cats.models || 0)}, Textures ${fmtMB(cats.textures || 0)}, ` +
+    `Audio ${fmtMB(cats.audio || 0)}, Code ${fmtMB(cats.code || 0)} (${manifest.fileCount} files)`;
+
+  const cacheStats = await assets.inspectCacheStatus(manifest);
+  cacheInfoEl.textContent = `Cached: ${fmtMB(cacheStats.cachedBytes)}, to download: ${fmtMB(cacheStats.remainingBytes)}`;
+  document.getElementById('menu-cache-badge').textContent =
+    cacheStats.remainingBytes === 0
+      ? `Offline Ready • ${fmtMB(manifest.totalBytes)} cached`
+      : `Package: ${fmtMB(manifest.totalBytes)} (${manifest.fileCount} files)`;
+
+  // Mobile data / Save-Data confirmation if remaining download > 20 MB
+  const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const isMetered = !!(conn && (conn.saveData || (conn.effectiveType && conn.effectiveType !== '4g')));
+  if (isMetered && cacheStats.remainingBytes > 20 * 1024 * 1024) {
+    dataWarnText.textContent = `Download is ${fmtMB(cacheStats.remainingBytes)} on a limited/mobile connection. Proceed?`;
+    dataWarn.classList.remove('hidden');
+    await new Promise((resolve) => {
+      document.getElementById('btn-confirm-download').onclick = () => {
+        dataWarn.classList.add('hidden');
+        resolve();
+      };
+    });
   }
 
-  audio.setIndoorZones([{ minX: -6.5, maxX: 3.5, minY: 0, maxY: 3.4, minZ: -14, maxZ: -8 }]);
-
-  // Interactive Door in doorway (-2.05 .. -0.95)
-  doorSystem.createDoor({
-    hingePos: { x: -2.02, y: 0, z: -8 },
-    width: 1.05,
-    height: 2.2,
-    thickness: 0.08,
-    baseYaw: 0,
+  statusEl.textContent = 'Downloading & caching assets...';
+  await assets.loadAllFromManifest(manifest, cacheStats.cachedPaths, (loaded, total, filePath) => {
+    const pct = Math.min(100, Math.round((loaded / total) * 100));
+    barEl.style.width = `${pct}%`;
+    bytesEl.textContent = `${fmtMB(loaded)} / ${fmtMB(total)}`;
+    statusEl.textContent = `Loading ${filePath.split('/').pop()} (${pct}%)`;
   });
 
-  // Stairs steps (test autostep)
-  for (let i = 0; i < 6; i++) {
-    const h = 0.22;
-    const pos = { x: 5.5, y: h * 0.5 + i * h, z: -4 - i * 0.55 };
-    const half = { x: 1.1, y: h * 0.5, z: 0.3 };
-    const m = new THREE.Mesh(new THREE.BoxGeometry(half.x * 2, half.y * 2, half.z * 2), wallMat);
-    m.position.set(pos.x, pos.y, pos.z);
-    m.castShadow = true;
-    m.receiveShadow = true;
-    engine.scene.add(m);
-    physics.addStaticBox(pos, half, null, { material: 'concrete', kind: 'stairs' });
+  barEl.style.width = '100%';
+  bytesEl.textContent = `${fmtMB(manifest.totalBytes)} / ${fmtMB(manifest.totalBytes)}`;
+  statusEl.textContent = 'Initializing physics & world...';
+}
+
+async function buildWorld() {
+  if (!worldBuilt) {
+    village = new VillageBuilder(engine.scene, physics, doorSystem, assets);
+    await village.build();
+    audio.setIndoorZones(village.indoorZones);
+
+    const [pistolGltf, akmGltf, m4Gltf] = await Promise.all([
+      assets.loadModel('pistol'),
+      assets.loadModel('akm'),
+      assets.loadModel('m4'),
+    ]);
+    weapons.attachWeaponModel('pistol', pistolGltf.scene);
+    weapons.attachWeaponModel('akm', akmGltf.scene);
+    weapons.attachWeaponModel('m4', m4Gltf.scene);
+    worldBuilt = true;
   }
 
-  // Slope ramp
-  const rampPos = { x: -6, y: 0.55, z: -3 };
-  const rampHalf = { x: 1.2, y: 0.15, z: 2.4 };
-  const rampMesh = new THREE.Mesh(new THREE.BoxGeometry(rampHalf.x * 2, rampHalf.y * 2, rampHalf.z * 2), woodMat);
-  rampMesh.position.set(rampPos.x, rampPos.y, rampPos.z);
-  rampMesh.rotation.x = 0.28;
-  rampMesh.castShadow = true;
-  rampMesh.receiveShadow = true;
-  engine.scene.add(rampMesh);
-  physics.addStaticBox(rampPos, rampHalf, { x: 0.28, y: 0, z: 0 }, { material: 'wood', kind: 'ramp', penetrable: true });
+  await audio.loadClips(AUDIO_CLIPS, (url) => assets.getArrayBuffer(url));
+  await enemySys.spawnVillageSquad(village, settings.difficulty);
+  totalEnemies = enemySys.getRemainingCount();
+  player.spawn({ x: 0, y: 0.25, z: 30 }, 0);
+}
 
-  // Dynamic physics props
-  for (let i = 0; i < 4; i++) {
-    const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.7), woodMat);
-    crate.castShadow = true;
-    crate.receiveShadow = true;
-    engine.scene.add(crate);
-    physics.addDynamicBox(crate, { x: -1 + i * 1.1, y: 0.5 + i * 0.2, z: -3.5 }, { x: 0.35, y: 0.35, z: 0.35 }, 14);
-  }
+async function restartMission() {
+  document.getElementById('end-screen').classList.add('hidden');
+  weapons.resetAll();
+  await enemySys.spawnVillageSquad(village, settings.difficulty);
+  totalEnemies = enemySys.getRemainingCount();
+  player.spawn({ x: 0, y: 0.25, z: 30 }, 0);
+  document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
+  document.getElementById('damage-arrow').classList.add('hidden');
 
-  player.spawn({ x: 0, y: 0.2, z: 4 }, 0);
+  document.getElementById('main-menu').classList.add('hidden');
+  document.getElementById('hud').classList.remove('hidden');
+  document.getElementById('touch-controls').classList.remove('hidden');
+  gameState = 'playing';
 }
 
 function bindUI() {
@@ -146,17 +202,34 @@ function bindUI() {
   mainMenu.classList.remove('hidden');
   gameState = 'menu';
 
-  const startPlay = () => {
+  const startPlay = async () => {
     audio.unlock();
     input.requestFullscreenLandscape();
+    if (gameState === 'menu') {
+      // Ensure selected difficulty applies cleanly on fresh deploy
+      await enemySys.spawnVillageSquad(village, settings.difficulty);
+      totalEnemies = enemySys.getRemainingCount();
+      player.spawn({ x: 0, y: 0.25, z: 30 }, 0);
+      weapons.resetAll();
+    }
     mainMenu.classList.add('hidden');
     hud.classList.remove('hidden');
     touchControls.classList.remove('hidden');
+    document.getElementById('btn-restart-menu').classList.remove('hidden');
     gameState = 'playing';
   };
 
   document.getElementById('btn-deploy').addEventListener('click', startPlay);
   document.getElementById('btn-resume').addEventListener('click', startPlay);
+  document.getElementById('btn-restart-menu').addEventListener('click', restartMission);
+  document.getElementById('btn-restart-end').addEventListener('click', restartMission);
+  document.getElementById('btn-menu-end').addEventListener('click', () => {
+    document.getElementById('end-screen').classList.add('hidden');
+    mainMenu.classList.remove('hidden');
+    document.getElementById('btn-resume').classList.add('hidden');
+    gameState = 'menu';
+  });
+
   document.getElementById('btn-pause-hud').addEventListener('click', () => {
     hud.classList.add('hidden');
     touchControls.classList.add('hidden');
@@ -178,6 +251,12 @@ function bindUI() {
   });
   document.getElementById('btn-close-loadout').addEventListener('click', () => {
     loadoutModal.classList.add('hidden');
+  });
+
+  document.getElementById('btn-clear-cache').addEventListener('click', async () => {
+    await assets.clearCache();
+    document.getElementById('cache-clear-status').textContent = 'Cache cleared. Next visit will re-download.';
+    document.getElementById('menu-cache-badge').textContent = 'Cache cleared';
   });
 
   document.querySelectorAll('#difficulty-selector .seg-btn').forEach((btn) => {
@@ -245,12 +324,18 @@ function bindUI() {
 }
 
 async function boot() {
-  await physics.init();
-  buildPhase1Sandbox();
-  bindUI();
-
-  // Preload audio clips asynchronously
-  audio.loadClips(AUDIO_CLIPS).catch(() => {});
+  try {
+    await runManifestLoadingFlow();
+    await physics.init();
+    await buildWorld();
+    bindUI();
+  } catch (err) {
+    console.error(err);
+    document.getElementById('loading-error-box').classList.remove('hidden');
+    document.getElementById('loading-error-text').textContent = `Load error: ${err?.message || err}`;
+    document.getElementById('btn-retry-load').onclick = () => boot();
+    return;
+  }
 
   let nearestDoor = null;
   let menuOrbitAngle = 0;
@@ -281,16 +366,25 @@ async function boot() {
         doorSystem.toggle(nearestDoor, (d) => audio.playClip('door_open', d.hingePos, 0.72));
       }
 
+      const prevMag = weapons.activeAmmo.mag;
       weapons.update(
         dt,
         cmd,
         player,
-        () => {
+        (enemy, dmg, hitPt, dir) => {
           hitStopTimer = 0.038;
+          enemySys.damageEnemy(enemy, dmg, hitPt, dir);
+          if (enemySys.getRemainingCount() === 0) {
+            finishMission(true);
+          }
         },
         showHitMarker
       );
+      if (weapons.activeAmmo.mag < prevMag) {
+        enemySys.notifyGunfire(player.getFeetPosition(), audio.isIndoors);
+      }
 
+      enemySys.update(dt, player.getFeetPosition(), onPlayerDamaged);
       effects.update(dt);
       physics.step();
     },
@@ -299,28 +393,37 @@ async function boot() {
         hitMarkerTimer -= renderDt;
         if (hitMarkerTimer <= 0) document.getElementById('hit-marker').classList.add('hidden');
       }
+      if (damageFlashTimer > 0) {
+        damageFlashTimer -= renderDt;
+        if (damageFlashTimer <= 0) {
+          document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
+          document.getElementById('damage-arrow').classList.add('hidden');
+        }
+      }
 
       if (gameState === 'playing') {
         physics.interpolate(alpha);
         player.applyCamera(alpha);
         engine.updateShadowFocus(player.currPos);
+        if (village) engine.enforceTriangleBudget([...village.lodObjects, ...enemySys.lodObjects]);
 
         const fwd = player.getAimDirection();
         audio.updateListener(engine.camera.position, fwd, new THREE.Vector3(0, 1, 0));
 
-        // HUD telemetry
+        // Telemetry & Debug
         document.getElementById('fps-counter').textContent = `FPS: ${engine.fps} | Hz: ${engine.detectedHz}`;
         const debugEl = document.getElementById('debug-tris');
         debugEl.classList.toggle('hidden', !settings.showDebug);
         debugEl.textContent = `TRIS: ${engine.triangles.toLocaleString()} / ${(MAX_TRIANGLES / 1000).toFixed(0)}k`;
 
-        // Zone & compass
+        // Compass & Zone
         const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);
         const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
         document.getElementById('compass-dir').textContent = `${dirs[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
         document.getElementById('zone-indicator').textContent = audio.isIndoors ? 'INDOORS' : 'OUTDOORS';
 
-        // Weapons & HP HUD
+        // Objective & Combat HUD
+        document.getElementById('objective-count').textContent = `${enemySys.getRemainingCount()} / ${totalEnemies}`;
         document.getElementById('weapon-name').textContent = weapons.isReloading
           ? `${weapons.activeDef.name} (RELOAD)`
           : weapons.activeDef.name;
@@ -332,16 +435,12 @@ async function boot() {
         document.getElementById('btn-door').classList.toggle('hidden', !nearestDoor);
         document.getElementById('interact-prompt').classList.toggle('hidden', !nearestDoor);
       } else {
-        menuOrbitAngle += renderDt * 0.14;
-        engine.camera.position.set(Math.sin(menuOrbitAngle) * 14, 5.2, Math.cos(menuOrbitAngle) * 14);
-        engine.camera.lookAt(0, 1.5, -4);
+        menuOrbitAngle += renderDt * 0.08;
+        engine.camera.position.set(Math.sin(menuOrbitAngle) * 15, 5.8, 10 + Math.cos(menuOrbitAngle) * 12);
+        engine.camera.lookAt(0, 1.5, -6);
       }
     }
   );
 }
 
-boot().catch((err) => {
-  console.error(err);
-  document.getElementById('loading-error-box').classList.remove('hidden');
-  document.getElementById('loading-error-text').textContent = String(err?.message || err);
-});
+boot();
