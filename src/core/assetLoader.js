@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-const CACHE_NAME = 'ashes-of-vale-assets-v1';
+const CACHE_NAME = 'ashes-of-vale-assets-v2';
 
 export class AssetLoader {
   constructor() {
@@ -150,7 +150,7 @@ export function normalizeModelToArtBible(root, { roughnessMin = 0.72, tint = 0xd
   const tintColor = new THREE.Color(tint);
   root.traverse((obj) => {
     if (obj.isMesh) {
-      obj.castShadow = true;
+      obj.castShadow = false;
       obj.receiveShadow = true;
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (const m of mats) {

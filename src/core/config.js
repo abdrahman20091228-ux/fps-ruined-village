@@ -12,7 +12,7 @@ export const QUALITY_PRESETS = {
     shadowSize: 1536,
     triTarget: 320_000,
     lodBias: 1.0,
-    drawDist: 105,
+    drawDist: 88,
   },
   high: {
     shadowSize: 2048,
@@ -47,7 +47,9 @@ export const DIFFICULTIES = {
 };
 
 export const DEFAULT_SETTINGS = {
-  sensitivity: 1.0,
+  sensitivity: 2.2,
+  gyroEnabled: true,
+  gyroSensitivity: 2.2,
   resolutionScale: 0.85,
   quality: 'medium',
   fpsCap: 60,
@@ -58,7 +60,7 @@ export const DEFAULT_SETTINGS = {
   difficulty: 'regular',
 };
 
-const STORAGE_KEY = 'ashes_of_vale_settings_v1';
+const STORAGE_KEY = 'ashes_of_vale_settings_v2';
 
 export function loadSettings() {
   try {

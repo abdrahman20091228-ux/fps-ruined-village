@@ -25,10 +25,21 @@
   <!-- Blocking Portrait Overlay -->
   <div id="rotate-overlay" class="overlay-blocking hidden" role="alert" aria-live="assertive">
     <div class="rotate-card">
-      <div class="rotate-icon" aria-hidden="true">📱↻</div>
+      <div class="rotate-icon" aria-hidden="true">
+        <svg class="ui-svg-xl" viewBox="0 0 64 64" fill="none">
+          <rect x="8" y="20" width="42" height="24" rx="4" stroke="#c99b42" stroke-width="2.4" fill="rgba(201,155,66,0.08)"/>
+          <circle cx="14" cy="32" r="2" fill="#c99b42"/>
+          <path d="M29 27v10M24 32h10" stroke="#f0ede6" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M46 14c7 3 11 10 10 18" stroke="#c99b42" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="3 3"/>
+          <path d="M59 29l-3 5-4-4" stroke="#c99b42" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
       <h2>ROTATE DEVICE TO LANDSCAPE</h2>
-      <p>This tactical FPS requires landscape orientation from the first frame.</p>
-      <button id="btn-force-landscape" class="btn-tactical">ENTER FULLSCREEN &amp; LANDSCAPE</button>
+      <p>This tactical FPS requires landscape orientation and fullscreen control.</p>
+      <button id="btn-force-landscape" class="btn-tactical btn-primary">
+        <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        ENTER FULLSCREEN &amp; LANDSCAPE
+      </button>
     </div>
   </div>
 
@@ -37,7 +48,7 @@
     <div class="loading-panel">
       <div class="brand-badge">SECTOR 04 // RECON BUILD</div>
       <h1 class="game-title">ASHES OF VALE</h1>
-      <p class="subtitle">CLOSE-QUARTERS RUINED VILLAGE ASSAULT</p>
+      <p class="subtitle">CLOSE-QUARTERS MULTI-STORY VILLAGE ASSAULT</p>
 
       <div id="mobile-data-warning" class="data-warning hidden">
         <p id="mobile-data-text">Large download detected on cellular/save-data connection.</p>
@@ -70,7 +81,7 @@
         <div class="mission-tag">OPERATION: ASHEN THRESHOLD // SINGLE PLAYER</div>
         <h1 class="menu-title">ASHES OF VALE</h1>
         <p class="menu-brief">
-          Breach 6 ruined village houses, clear scattered hostiles indoors and along rubble-choked alleys, and secure the sector.
+          Push down the cratered main road, clear 2-story village homes and storm the 5-story ruined apartment tower. Hostiles hold rooms across every floor.
         </p>
 
         <div class="menu-section">
@@ -83,12 +94,27 @@
         </div>
 
         <div class="menu-actions">
-          <button id="btn-deploy" class="btn-tactical btn-primary btn-lg">DEPLOY TO VILLAGE</button>
+          <button id="btn-deploy" class="btn-tactical btn-primary btn-lg">
+            <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+            DEPLOY TO VILLAGE
+          </button>
           <div class="menu-row-secondary">
-            <button id="btn-resume" class="btn-tactical hidden">RESUME</button>
-            <button id="btn-restart-menu" class="btn-tactical hidden">RESTART</button>
-            <button id="btn-open-settings" class="btn-tactical">SETTINGS</button>
-            <button id="btn-open-loadout" class="btn-tactical">LOADOUT &amp; INTEL</button>
+            <button id="btn-resume" class="btn-tactical hidden">
+              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><polygon points="6,4 20,12 6,20" fill="currentColor"/></svg>
+              RESUME
+            </button>
+            <button id="btn-restart-menu" class="btn-tactical hidden">
+              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              RESTART
+            </button>
+            <button id="btn-open-settings" class="btn-tactical">
+              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v2.5M12 19v2.5M4.5 12H2M22 12h-2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+              SETTINGS
+            </button>
+            <button id="btn-open-loadout" class="btn-tactical">
+              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M3 11h14l3 2v3h-3l-2-2H8l-2 3H3v-6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 11V8h5v3" stroke="currentColor" stroke-width="1.8"/></svg>
+              ARSENAL &amp; INTEL
+            </button>
           </div>
         </div>
       </div>
@@ -100,11 +126,11 @@
             <span class="intel-status">READY</span>
           </div>
           <ul class="intel-list">
-            <li><span>AREA</span><strong>Ruined Village (8 Structures)</strong></li>
-            <li><span>HOSTILES</span><strong>Up to 12 Armed Combatants</strong></li>
-            <li><span>ARSENAL</span><strong>M9 Pistol • AKM • M4 Carbine</strong></li>
-            <li><span>PENETRATION</span><strong>Wood &amp; Plaster Only</strong></li>
-            <li><span>ACOUSTICS</span><strong>3D Occlusion + Indoor Reverb</strong></li>
+            <li><span>SECTOR</span><strong>Paved Street + 7 Structures</strong></li>
+            <li><span>VERTICALITY</span><strong>2-Story Houses &amp; 5-Story Tower</strong></li>
+            <li><span>HOSTILES</span><strong>12 Armed (4 Combat Classes)</strong></li>
+            <li><span>ARSENAL</span><strong>M9 Tactical • AKM • M4 Carbine</strong></li>
+            <li><span>CONTROLS</span><strong>High-Sens Touch + Gyroscope</strong></li>
           </ul>
           <div id="menu-cache-badge" class="cache-badge">Cache verified</div>
         </div>
@@ -117,7 +143,9 @@
     <div class="modal-card">
       <div class="modal-header">
         <h2>ARSENAL &amp; CONTROLS</h2>
-        <button id="btn-close-loadout" class="btn-icon">✕</button>
+        <button id="btn-close-loadout" class="btn-icon" aria-label="Close">
+          <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div class="modal-body loadout-grid">
         <div class="weapon-spec">
@@ -130,11 +158,11 @@
         </div>
         <div class="weapon-spec">
           <h3>M4 CARBINE (5.56×45mm)</h3>
-          <p>High cyclic fire rate, controllable burst recoil, fast reload for room clearing.</p>
+          <p>High cyclic fire rate, controllable burst recoil, fast reload for multi-floor clearing.</p>
         </div>
         <div class="weapon-spec">
-          <h3>TOUCH CONTROLS</h3>
-          <p>Left thumb: move/sprint • Right screen: aim • Tap Door icon near doors to breach.</p>
+          <h3>TOUCH &amp; GYRO CONTROLS</h3>
+          <p>Bottom-left pad: walk &amp; strafe • Right screen or tilt device (Gyro): aim • Tap Door button to breach.</p>
         </div>
       </div>
     </div>
@@ -145,12 +173,22 @@
     <div class="modal-card">
       <div class="modal-header">
         <h2>FIELD SETTINGS</h2>
-        <button id="btn-close-settings" class="btn-icon">✕</button>
+        <button id="btn-close-settings" class="btn-icon" aria-label="Close">
+          <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+        </button>
       </div>
       <div class="modal-body settings-grid">
         <label class="setting-row">
-          <span>Look Sensitivity <strong id="val-sensitivity">1.0</strong></span>
-          <input id="set-sensitivity" type="range" min="0.4" max="2.5" step="0.1" value="1.0" />
+          <span>Touch Look Sensitivity <strong id="val-sensitivity">2.2</strong></span>
+          <input id="set-sensitivity" type="range" min="0.5" max="6.0" step="0.25" value="2.2" />
+        </label>
+        <label class="setting-row">
+          <span>Gyroscope Sensitivity <strong id="val-gyro-sens">2.2</strong></span>
+          <input id="set-gyro-sens" type="range" min="0.2" max="6.0" step="0.2" value="2.2" />
+        </label>
+        <label class="setting-row setting-toggle">
+          <span>Gyroscope Aiming (Motion)</span>
+          <input id="set-gyro-enabled" type="checkbox" checked />
         </label>
         <label class="setting-row">
           <span>Resolution Scale <strong id="val-res-scale">0.85</strong></span>
@@ -161,7 +199,7 @@
           <select id="set-quality">
             <option value="low">Low (Max Battery / 200k tris)</option>
             <option value="medium" selected>Medium (Balanced / 320k tris)</option>
-            <option value="high">High (Sharp Shadows / 450k tris)</option>
+            <option value="high">High (Sharp Shadows / 430k tris)</option>
           </select>
         </label>
         <label class="setting-row">
@@ -185,7 +223,7 @@
           <span>Button Vertical Offset <strong id="val-btn-offset">0px</strong></span>
           <input id="set-btn-offset" type="range" min="-40" max="40" step="5" value="0" />
         </label>
-        <label class="setting-row">
+        <label class="setting-row setting-toggle">
           <span>Show Debug Triangles</span>
           <input id="set-debug" type="checkbox" checked />
         </label>
@@ -210,25 +248,29 @@
     </div>
   </div>
 
-  <!-- Top Telemetry Bar (Small FPS + Triangle Debug + Objective + Compass) -->
+  <!-- Top Telemetry Bar -->
   <div id="hud" class="hidden">
     <div id="top-telemetry">
       <div id="fps-counter">FPS: -- | Hz: --</div>
-      <div id="debug-tris">TRIS: 0 / 500k | LOD: MED</div>
+      <div id="debug-tris">TRIS: 0 / 500k</div>
     </div>
 
     <div id="compass-bar">
+      <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><polygon points="8,1 11,9 8,7.5 5,9" fill="#c99b42"/></svg>
       <span id="compass-dir">N 000°</span>
-      <span class="sep">•</span>
+      <span class="sep">|</span>
       <span id="zone-indicator">OUTDOORS</span>
     </div>
 
     <div id="objective-box">
+      <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="#c99b42" stroke-width="1.5"/><circle cx="8" cy="8" r="1.5" fill="#c99b42"/></svg>
       <span class="obj-label">HOSTILES</span>
       <span id="objective-count">0 / 0</span>
     </div>
 
-    <button id="btn-pause-hud" class="hud-icon-btn" aria-label="Pause Menu">☰</button>
+    <button id="btn-pause-hud" class="hud-icon-btn" aria-label="Pause Menu">
+      <svg class="hud-svg-btn" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+    </button>
 
     <!-- Center Crosshair & Hit Marker -->
     <div id="crosshair">
@@ -241,7 +283,7 @@
 
     <div id="damage-vignette"></div>
     <div id="damage-arrow" class="hidden"></div>
-    <div id="interact-prompt" class="hidden">[DOOR] OPEN / CLOSE</div>
+    <div id="interact-prompt" class="hidden">DOOR // OPEN OR CLOSE</div>
 
     <!-- Bottom Status -->
     <div id="hud-bottom-left">
@@ -255,27 +297,72 @@
     </div>
   </div>
 
-  <!-- Mobile Touch Controls -->
+  <!-- Mobile Touch Controls (Custom Luxury Tactical SVG Icons) -->
   <div id="touch-controls" class="hidden">
     <div id="joystick-zone">
-      <div id="joystick-base" class="hidden">
+      <div id="joystick-base">
         <div id="joystick-knob"></div>
       </div>
     </div>
     <div id="look-zone"></div>
 
     <div id="touch-buttons-right">
-      <button id="btn-fire" class="t-btn t-btn-fire">FIRE</button>
-      <button id="btn-ads" class="t-btn t-btn-ads">ADS</button>
-      <button id="btn-reload" class="t-btn t-btn-sm">R</button>
-      <button id="btn-jump" class="t-btn t-btn-sm">JMP</button>
-      <button id="btn-crouch" class="t-btn t-btn-sm">CRC</button>
-      <button id="btn-door" class="t-btn t-btn-door hidden">DOOR</button>
+      <button id="btn-fire" class="t-btn t-btn-fire" aria-label="Fire">
+        <svg class="t-svg-lg" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="11" stroke="#f5d48a" stroke-width="1.6" stroke-dasharray="4 3"/>
+          <path d="M16 2v6M16 24v6M2 16h6M24 16h6" stroke="#f0ede6" stroke-width="2" stroke-linecap="round"/>
+          <path d="M16 10l2.2 5v4h-4.4v-4L16 10z" fill="#c99b42"/>
+        </svg>
+      </button>
+      <button id="btn-ads" class="t-btn t-btn-ads" aria-label="Aim Down Sights">
+        <svg class="t-svg" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="7.5" stroke="#c99b42" stroke-width="1.7"/>
+          <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" stroke="#f0ede6" stroke-width="1.7" stroke-linecap="round"/>
+          <circle cx="12" cy="12" r="1.4" fill="#c99b42"/>
+        </svg>
+        <span class="t-tag">ADS</span>
+      </button>
+      <button id="btn-reload" class="t-btn t-btn-sm" aria-label="Reload">
+        <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
+          <path d="M4.5 11a7.5 7.5 0 0 1 13-4.8L19.5 8" stroke="#f0ede6" stroke-width="1.9" stroke-linecap="round"/>
+          <path d="M19.5 4v4h-4" stroke="#c99b42" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M19.5 13a7.5 7.5 0 0 1-13 4.8L4.5 16" stroke="#f0ede6" stroke-width="1.9" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button id="btn-jump" class="t-btn t-btn-sm" aria-label="Jump">
+        <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
+          <path d="M6 15l6-6 6 6" stroke="#c99b42" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 19.5l6-5 6 5" stroke="#f0ede6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+      <button id="btn-crouch" class="t-btn t-btn-sm" aria-label="Crouch">
+        <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
+          <path d="M6 9l6 6 6-6" stroke="#f0ede6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M7 18h10" stroke="#c99b42" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button id="btn-door" class="t-btn t-btn-door hidden" aria-label="Door">
+        <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
+          <rect x="6" y="3" width="11" height="18" rx="1" stroke="#c99b42" stroke-width="1.8"/>
+          <circle cx="14" cy="12" r="1.4" fill="#f0ede6"/>
+          <path d="M19 9l2.5 3-2.5 3" stroke="#f0ede6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </div>
 
     <div id="touch-buttons-left">
-      <button id="btn-sprint" class="t-btn t-btn-sm">RUN</button>
-      <button id="btn-weapon" class="t-btn t-btn-wide">WPN</button>
+      <button id="btn-sprint" class="t-btn t-btn-sm" aria-label="Sprint">
+        <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
+          <path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke="#c99b42" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="t-tag">RUN</span>
+      </button>
+      <button id="btn-weapon" class="t-btn t-btn-wide" aria-label="Switch Weapon">
+        <svg class="t-svg-wide" viewBox="0 0 36 20" fill="none">
+          <path d="M4 9h20l3 2.5h5v2.5h-6l-2-1.5H16l-1.5 3.5h-3L12 13H6l-2 2.5V9z" stroke="#f0ede6" stroke-width="1.6" stroke-linejoin="round"/>
+          <path d="M13 9V6.5h6V9" stroke="#c99b42" stroke-width="1.6"/>
+        </svg>
+      </button>
     </div>
   </div>
 

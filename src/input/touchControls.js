@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 export class InputManager {
   constructor(settings, onFirstGesture) {
     this.settings = settings;
@@ -18,6 +20,7 @@ export class InputManager {
       switchWeapon: false,
       interact: false,
     };
+    this._fireQueued = false;
 
     this._joyPointerId = null;
     this._joyOrigin = { x: 0, y: 0 };
@@ -25,31 +28,59 @@ export class InputManager {
     this._lookLast = { x: 0, y: 0 };
     this._keys = new Set();
 
+    // Quaternion-based Gyroscope tracking (gimbal-free in landscape)
+    this._gyroAttached = false;
+    this._gyroPermissionAsked = false;
+    this._lastDeviceQuat = null;
+    this.gyroSupported = typeof window !== 'undefined' && 'DeviceOrientationEvent' in window;
+
     this._bindLandscapeGate();
     this._bindTouchControls();
+    this._bindGyroscope();
     this._bindDesktopFallback();
     this.applyLayoutSettings(settings);
   }
 
   _notifyFirstGesture() {
+    this.requestFullscreenLandscape();
+    this._requestGyroPermissionIfNeeded();
     if (!this._gestureFired) {
       this._gestureFired = true;
-      this.requestFullscreenLandscape();
       if (this.onFirstGesture) this.onFirstGesture();
+    }
+  }
+
+  async _requestGyroPermissionIfNeeded() {
+    if (this._gyroPermissionAsked) return;
+    this._gyroPermissionAsked = true;
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const res = await DeviceOrientationEvent.requestPermission();
+        if (res === 'granted') this._attachGyroListener();
+      } else {
+        this._attachGyroListener();
+      }
+    } catch {
+      // Ignore if rejected or unsupported
     }
   }
 
   async requestFullscreenLandscape() {
     try {
       const el = document.documentElement;
-      if (el.requestFullscreen && !document.fullscreenElement) {
-        await el.requestFullscreen();
+      const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+      if (!fsEl) {
+        if (el.requestFullscreen) {
+          await el.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+        } else if (el.webkitRequestFullscreen) {
+          el.webkitRequestFullscreen();
+        }
       }
       if (screen.orientation && screen.orientation.lock) {
-        await screen.orientation.lock('landscape');
+        await screen.orientation.lock('landscape').catch(() => {});
       }
     } catch {
-      // Orientation lock is unsupported on some browsers; portrait overlay handles fallback
+      // Orientation lock / fullscreen may be blocked in certain webviews or desktop tests
     }
   }
 
@@ -66,7 +97,72 @@ export class InputManager {
       this._notifyFirstGesture();
       check();
     });
+
+    // Any tap/click anywhere automatically tries to enter fullscreen + landscape
+    const onAnyTap = () => {
+      this._notifyFirstGesture();
+    };
+    document.addEventListener('pointerdown', onAnyTap, { capture: true, passive: true });
+    document.addEventListener('pointerup', onAnyTap, { capture: true, passive: true });
+    document.addEventListener('click', onAnyTap, { capture: true, passive: true });
+
     check();
+  }
+
+  _bindGyroscope() {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission !== 'function') {
+      this._attachGyroListener();
+    }
+  }
+
+  _attachGyroListener() {
+    if (this._gyroAttached) return;
+    this._gyroAttached = true;
+
+    const zee = new THREE.Vector3(0, 0, 1);
+    const euler = new THREE.Euler();
+    const q0 = new THREE.Quaternion();
+    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); // -PI/2 around X
+    const currQ = new THREE.Quaternion();
+    const deltaQ = new THREE.Quaternion();
+    const prevInv = new THREE.Quaternion();
+    const deltaEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+
+    window.addEventListener('deviceorientation', (e) => {
+      if (!this.settings.gyroEnabled || e.alpha == null || e.beta == null || e.gamma == null) {
+        this._lastDeviceQuat = null;
+        return;
+      }
+
+      const alpha = THREE.MathUtils.degToRad(e.alpha);
+      const beta = THREE.MathUtils.degToRad(e.beta);
+      const gamma = THREE.MathUtils.degToRad(e.gamma);
+      const orientAngle = THREE.MathUtils.degToRad(
+        screen.orientation?.angle ?? window.orientation ?? 90
+      );
+
+      euler.set(beta, alpha, -gamma, 'YXZ');
+      currQ.setFromEuler(euler);
+      currQ.multiply(q1);
+      currQ.multiply(q0.setFromAxisAngle(zee, -orientAngle));
+
+      if (!this._lastDeviceQuat) {
+        this._lastDeviceQuat = currQ.clone();
+        return;
+      }
+
+      prevInv.copy(this._lastDeviceQuat).invert();
+      deltaQ.multiplyQuaternions(prevInv, currQ);
+      this._lastDeviceQuat.copy(currQ);
+
+      deltaEuler.setFromQuaternion(deltaQ, 'YXZ');
+      // Guard against initial sensor jump or wrap spike
+      if (Math.abs(deltaEuler.y) > 0.35 || Math.abs(deltaEuler.x) > 0.35) return;
+
+      const gyroSens = (this.settings.gyroSensitivity ?? 2.2) * 0.72;
+      this.state.lookDX -= deltaEuler.y * gyroSens;
+      this.state.lookDY -= deltaEuler.x * gyroSens;
+    });
   }
 
   applyLayoutSettings(settings) {
@@ -81,7 +177,16 @@ export class InputManager {
     const joyKnob = document.getElementById('joystick-knob');
     const lookZone = document.getElementById('look-zone');
 
-    const maxRadius = 42;
+    const maxRadius = 44;
+
+    const resetPadVisual = () => {
+      joyBase.classList.remove('active');
+      joyBase.style.left = '';
+      joyBase.style.top = '';
+      joyBase.style.bottom = '';
+      joyKnob.style.transform = 'translate(0px, 0px)';
+    };
+    resetPadVisual();
 
     joyZone.addEventListener('pointerdown', (e) => {
       this._notifyFirstGesture();
@@ -92,7 +197,7 @@ export class InputManager {
       this._joyOrigin = { x: e.clientX, y: e.clientY };
       joyBase.style.left = `${e.clientX - rect.left}px`;
       joyBase.style.top = `${e.clientY - rect.top}px`;
-      joyBase.classList.remove('hidden');
+      joyBase.classList.add('active');
       joyKnob.style.transform = 'translate(0px, 0px)';
     });
 
@@ -106,8 +211,9 @@ export class InputManager {
         dy = (dy / dist) * maxRadius;
       }
       joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-      this.state.moveX = dx / maxRadius;
-      this.state.moveY = -dy / maxRadius;
+      // Deadzone 8%
+      this.state.moveX = Math.abs(dx / maxRadius) < 0.08 ? 0 : dx / maxRadius;
+      this.state.moveY = Math.abs(dy / maxRadius) < 0.08 ? 0 : -dy / maxRadius;
     });
 
     const resetJoy = (e) => {
@@ -115,7 +221,7 @@ export class InputManager {
       this._joyPointerId = null;
       this.state.moveX = 0;
       this.state.moveY = 0;
-      joyBase.classList.add('hidden');
+      resetPadVisual();
     };
     joyZone.addEventListener('pointerup', resetJoy);
     joyZone.addEventListener('pointercancel', resetJoy);
@@ -130,9 +236,10 @@ export class InputManager {
 
     lookZone.addEventListener('pointermove', (e) => {
       if (e.pointerId !== this._lookPointerId) return;
-      const sens = 0.0042 * (this.settings.sensitivity || 1.0);
-      const dx = Math.max(-160, Math.min(160, e.clientX - this._lookLast.x));
-      const dy = Math.max(-160, Math.min(160, e.clientY - this._lookLast.y));
+      // High-responsiveness mobile look multiplier (supports up to 6.0x in Settings)
+      const sens = 0.0076 * (this.settings.sensitivity || 2.2);
+      const dx = Math.max(-180, Math.min(180, e.clientX - this._lookLast.x));
+      const dy = Math.max(-180, Math.min(180, e.clientY - this._lookLast.y));
       this.state.lookDX += dx * sens;
       this.state.lookDY += dy * sens;
       this._lookLast = { x: e.clientX, y: e.clientY };
@@ -152,6 +259,7 @@ export class InputManager {
         e.stopPropagation();
         this._notifyFirstGesture();
         this.state[key] = true;
+        if (key === 'fire') this._fireQueued = true;
         el.classList.add('active');
       });
       const up = () => {
@@ -207,7 +315,7 @@ export class InputManager {
     });
     window.addEventListener('mousemove', (e) => {
       if (document.pointerLockElement === document.getElementById('game-canvas')) {
-        const sens = 0.0022 * (this.settings.sensitivity || 1.0);
+        const sens = 0.0028 * (this.settings.sensitivity || 2.2);
         this.state.lookDX += e.movementX * sens;
         this.state.lookDY += e.movementY * sens;
       }
@@ -238,7 +346,9 @@ export class InputManager {
   consumePulses() {
     const out = {
       ...this.state,
+      fire: this.state.fire || this._fireQueued,
     };
+    this._fireQueued = false;
     this.state.lookDX = 0;
     this.state.lookDY = 0;
     this.state.reload = false;

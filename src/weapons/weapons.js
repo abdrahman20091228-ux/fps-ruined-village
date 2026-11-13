@@ -144,23 +144,23 @@ export class WeaponSystem {
     const polymer = new THREE.MeshStandardMaterial({ color: 0x232629, roughness: 0.68, metalness: 0.18 });
 
     // Tapered tactical forearms & gloved hands tucked cleanly at grip + handguard
-    const armGeo = new THREE.CylinderGeometry(0.028, 0.038, 0.34, 8);
+    const armGeo = new THREE.CylinderGeometry(0.024, 0.033, 0.32, 8);
     armGeo.rotateX(Math.PI / 2);
 
     const rightArm = new THREE.Mesh(armGeo, sleeveMat);
-    rightArm.position.set(0.095, -0.115, 0.21);
-    rightArm.rotation.set(0.20, -0.28, 0);
+    rightArm.position.set(0.09, -0.135, 0.22);
+    rightArm.rotation.set(0.24, -0.26, 0);
 
     const leftArm = new THREE.Mesh(armGeo, sleeveMat);
-    leftArm.position.set(-0.14, -0.125, 0.13);
-    leftArm.rotation.set(0.26, 0.56, 0);
+    leftArm.position.set(-0.20, -0.155, 0.11);
+    leftArm.rotation.set(0.22, 0.72, 0);
 
-    const handGeo = new THREE.CylinderGeometry(0.022, 0.025, 0.06, 8);
+    const handGeo = new THREE.CylinderGeometry(0.02, 0.023, 0.055, 8);
     handGeo.rotateX(Math.PI / 2);
     const rightHand = new THREE.Mesh(handGeo, gloveMat);
-    rightHand.position.set(0.008, -0.045, 0.055);
+    rightHand.position.set(0.008, -0.05, 0.055);
     const leftHand = new THREE.Mesh(handGeo, gloveMat);
-    leftHand.position.set(-0.008, -0.022, -0.105);
+    leftHand.position.set(-0.008, -0.032, -0.11);
     this.viewmodelRoot.add(rightArm, leftArm, rightHand, leftHand);
 
     // Muzzle flash sprite

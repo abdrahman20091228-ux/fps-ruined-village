@@ -37,6 +37,20 @@ export class PlayerController {
 
   spawn(pos = { x: 0, y: 1.2, z: 0 }, yaw = 0) {
     const RAPIER = this.physics.RAPIER;
+    if (this.collider) {
+      this.physics.colliderMeta.delete(this.collider.handle);
+      this.physics.world.removeCollider(this.collider, true);
+      this.collider = null;
+    }
+    if (this.body) {
+      this.physics.world.removeRigidBody(this.body);
+      this.body = null;
+    }
+    if (this.charCtrl) {
+      this.physics.world.removeCharacterController(this.charCtrl);
+      this.charCtrl = null;
+    }
+
     this.yaw = yaw;
     this.pitch = 0;
     this.velY = 0;
@@ -51,11 +65,11 @@ export class PlayerController {
     this.collider = this.physics.world.createCollider(colDesc, this.body);
     this.physics.colliderMeta.set(this.collider.handle, { material: 'player', kind: 'player' });
 
-    this.charCtrl = this.physics.world.createCharacterController(0.02);
-    this.charCtrl.enableAutostep(0.45, 0.25, true);
-    this.charCtrl.enableSnapToGround(0.35);
-    this.charCtrl.setMaxSlopeClimbAngle((48 * Math.PI) / 180);
-    this.charCtrl.setMinSlopeSlideAngle((52 * Math.PI) / 180);
+    this.charCtrl = this.physics.world.createCharacterController(0.025);
+    this.charCtrl.enableAutostep(0.42, 0.22, true);
+    this.charCtrl.enableSnapToGround(0.36);
+    this.charCtrl.setMaxSlopeClimbAngle((55 * Math.PI) / 180);
+    this.charCtrl.setMinSlopeSlideAngle((58 * Math.PI) / 180);
     this.charCtrl.setApplyImpulsesToDynamicBodies(true);
 
     this.prevPos.set(pos.x, pos.y + this.standHeight * 0.5, pos.z);
@@ -69,14 +83,14 @@ export class PlayerController {
     this.prevPos.set(t.x, t.y, t.z);
 
     this.isCrouching = !!input.crouch;
-    this.isSprinting = !!input.sprint && !this.isCrouching && !input.ads && input.moveY > 0.2;
+    this.isSprinting = !!input.sprint && !this.isCrouching && !input.ads && input.moveY > 0.1;
 
     const targetHeight = this.isCrouching ? this.crouchHeight : this.standHeight;
     this.currentHeight += (targetHeight - this.currentHeight) * Math.min(1, dt * 12);
     const targetEye = this.isCrouching ? 0.92 : 1.56;
     this.eyeOffset += (targetEye - this.eyeOffset) * Math.min(1, dt * 12);
 
-    const speed = this.isCrouching ? 2.6 : this.isSprinting ? 6.6 : input.ads ? 2.8 : 4.6;
+    const speed = this.isCrouching ? 2.8 : this.isSprinting ? 7.0 : input.ads ? 3.0 : 4.9;
 
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));

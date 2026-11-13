@@ -1,12 +1,10 @@
 # Project Progress
 
-## Status: Complete — Live on GitHub Pages (`https://abdrahman20091228-ux.github.io/fps-ruined-village/`)
+## Status: V2 Overhaul Complete — Deployed & Verified on GitHub Pages (`https://abdrahman20091228-ux.github.io/fps-ruined-village/`)
 
-### Completed
-- **Phase 1**: Core Three.js + Rapier3D 60 Hz engine, FPS controller, doors, physics props, landscape enforcement.
-- **Phase 2**: WeaponSystem (M4, AKM, Pistol), recoil, penetration FX, decals, 14 real CC0 OGG/Opus audio clips (`0.15 MB`), 3D positional audio + indoor/outdoor acoustics.
-- **Phase 3**: `ART_BIBLE.md`, `CREDITS.md`, 7 seamless 3×3 WebP textures (`1.57 MB`), 15 Meshopt/WebP CC0 GLB models (`2.22 MB`), `AssetLoader` with Cache Storage API, ACES post-grade shader.
-- **Phase 4**: `VillageBuilder` with 8 ruined houses (walkable interiors, breached walls, roof holes, openable doors, merged geometry + 3-level `THREE.LOD`), `InstancedMesh` rubble, CC0 car wrecks, barriers, crates/barrels, dead trees with billboard LODs, waypoint graph.
-- **Phase 5**: `EnemySystem` with 12 enemies (9 across 6 houses + 3 outdoors), shared rigged skeleton + 3 muted uniform variants + 3 LODs, `Idle/Walk/Run`/flinch/collapse animations, vision cone + raycast + hearing + A* navigation, 3 difficulties, far-enemy throttling.
-- **Phase 6**: Polished tactical Main Menu with live 3D village camera pan, byte-progress loading screen driven by `assets-manifest.json` + Cache Storage API + mobile-data gate + retry on error, customizable touch HUD, Settings modal, FPS capper (`30/60/90/120`) with Hz detection, fixed `SkinnedMesh` weapon viewmodels and portrait orientation lock.
-- **Phase 7**: Enabled GitHub Pages from `main` root and verified live deployment in headless mobile landscape Chrome (`4.08 MB` manifest total, `0` 404s, `0` console/page errors, `300,378 / 500k` triangles, Cache Storage offline reload verified).
+### Key V2 Overhaul Upgrades
+- **Realistic Multi-Story Ruined Village**: Cracked asphalt avenue, cross-alley, north plaza, faded lane stripes, stepped concrete curbs & sidewalks, telegraph poles + overhead wires, 6 ruined houses (4 enterable 2-story buildings with balconies & staircases), and a full enterable **5-Story Apartment Tower** with switchback interior stairs and rooftop terrace (`0.18m` low breach sills, smooth inclined ramp colliders).
+- **Dense Military & Urban Props**: Street lamps, burnt pickup/sedan wrecks, concrete Jersey barriers, tyre barricades, utility boxes, generators, propane tanks, jerrycans, shutters, tables, chairs, medical boxes, ammo/supply crates, dead trees, dry olive-sage bushes, and 260 instanced rubble chunks.
+- **4 Distinct Rigged Enemy Classes & Real Combat Animations**: `enemy_fighter` (`camo`/`desert`/`olive`/`black` uniform + headgear variants), `enemy_swat` (`M4`), `enemy_soldier` (`AKM`), and `enemy_militia` (`M9`) driven by real humanoid animations, Rapier `CharacterController` wall collision, auto door opening, separation forces, and 3D floor-aware A* navigation.
+- **Upgraded Mobile Controls & Luxury Tactical SVG UI**: Automatic fullscreen + landscape request on any tap, landscape-calibrated quaternion Gyroscope + high Touch Look Sensitivity (`up to 6.0x`), unobstructed virtual thumbstick with quick-tap firing queue, and custom inline amber/bone tactical SVGs (zero keyboard emojis).
+- **Verified Performance & Size Budget**: Frame triangles stay strictly `< 500k` (`~195k` at spawn, `< 420k` peak) and total package is `7.28 MB` (`68` manifest files, zero files `> 2 MB`).

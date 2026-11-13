@@ -31,11 +31,11 @@ export class GameEngine {
     this.scene.add(this.hemiLight);
 
     this.sunLight = new THREE.DirectionalLight(0xffe1be, 1.9);
-    this.sunLight.position.set(28, 36, 18);
+    this.sunLight.position.set(22, 32, 14);
     this.sunLight.castShadow = true;
-    this.sunLight.shadow.camera.near = 2;
-    this.sunLight.shadow.camera.far = 90;
-    const d = 24;
+    this.sunLight.shadow.camera.near = 6;
+    this.sunLight.shadow.camera.far = 68;
+    const d = 20;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
@@ -173,7 +173,7 @@ export class GameEngine {
     const sx = Math.round(playerPos.x / snap) * snap;
     const sz = Math.round(playerPos.z / snap) * snap;
     this.sunLight.target.position.set(sx, 0, sz);
-    this.sunLight.position.set(sx + 26, 36, sz + 18);
+    this.sunLight.position.set(sx + 22, 32, sz + 14);
     this.sunLight.target.updateMatrixWorld();
   }
 

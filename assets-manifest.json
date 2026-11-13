@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T09:38:01.347Z",
-  "totalBytes": 4277821,
-  "fileCount": 50,
+  "generatedAt": "2026-11-13T10:34:02.054Z",
+  "totalBytes": 7634579,
+  "fileCount": 68,
   "categories": {
-    "code": 143133,
-    "models": 2327084,
-    "textures": 1649910,
+    "code": 184953,
+    "models": 5194592,
+    "textures": 2097340,
     "audio": 157694
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 14057,
+      "size": 25510,
       "category": "code"
     },
     {
@@ -22,12 +22,12 @@
     },
     {
       "path": "src/core/assetLoader.js",
-      "size": 5520,
+      "size": 5521,
       "category": "code"
     },
     {
       "path": "src/core/config.js",
-      "size": 1511,
+      "size": 1555,
       "category": "code"
     },
     {
@@ -47,27 +47,27 @@
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 8298,
+      "size": 12389,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 18705,
+      "size": 19185,
       "category": "code"
     },
     {
       "path": "src/player/controller.js",
-      "size": 5516,
+      "size": 5931,
       "category": "code"
     },
     {
       "path": "src/styles.css",
-      "size": 14054,
+      "size": 16554,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 15542,
+      "size": 15539,
       "category": "code"
     },
     {
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 22189,
+      "size": 45028,
       "category": "code"
     },
     {
@@ -166,6 +166,16 @@
       "category": "models"
     },
     {
+      "path": "assets/models/bush.glb",
+      "size": 175156,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/chair.glb",
+      "size": 108812,
+      "category": "models"
+    },
+    {
       "path": "assets/models/dead_tree1.glb",
       "size": 14820,
       "category": "models"
@@ -176,8 +186,43 @@
       "category": "models"
     },
     {
+      "path": "assets/models/enemy_fighter.glb",
+      "size": 1287960,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/enemy_militia.glb",
+      "size": 561716,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/enemy_soldier.glb",
+      "size": 608416,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/enemy_swat.glb",
+      "size": 580836,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/generator.glb",
+      "size": 215768,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/jerrycan.glb",
+      "size": 111528,
+      "category": "models"
+    },
+    {
       "path": "assets/models/m4.glb",
       "size": 64532,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/medical_box.glb",
+      "size": 98664,
       "category": "models"
     },
     {
@@ -186,8 +231,18 @@
       "category": "models"
     },
     {
+      "path": "assets/models/old_tyre.glb",
+      "size": 92844,
+      "category": "models"
+    },
+    {
       "path": "assets/models/pistol.glb",
       "size": 33380,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/propane_tank.glb",
+      "size": 84664,
       "category": "models"
     },
     {
@@ -196,34 +251,49 @@
       "category": "models"
     },
     {
-      "path": "assets/models/ruin_shell1.glb",
-      "size": 353404,
+      "path": "assets/models/rollershutter.glb",
+      "size": 83644,
       "category": "models"
     },
     {
-      "path": "assets/models/ruin_shell2.glb",
-      "size": 259796,
+      "path": "assets/models/street_lamp.glb",
+      "size": 74536,
       "category": "models"
     },
     {
-      "path": "assets/models/soldier_lod1.glb",
-      "size": 301572,
+      "path": "assets/models/trashbag.glb",
+      "size": 90404,
       "category": "models"
     },
     {
-      "path": "assets/models/soldier_lod2.glb",
-      "size": 270384,
+      "path": "assets/models/utility_box.glb",
+      "size": 78372,
       "category": "models"
     },
     {
-      "path": "assets/models/soldier.glb",
-      "size": 408824,
+      "path": "assets/models/wooden_table.glb",
+      "size": 57992,
       "category": "models"
     },
     {
       "path": "assets/models/wreck_car.glb",
       "size": 122372,
       "category": "models"
+    },
+    {
+      "path": "assets/models/wreck_pickup.glb",
+      "size": 75812,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/wreck_sedan.glb",
+      "size": 74364,
+      "category": "models"
+    },
+    {
+      "path": "assets/textures/asphalt.webp",
+      "size": 373172,
+      "category": "textures"
     },
     {
       "path": "assets/textures/brick.webp",
@@ -243,6 +313,26 @@
     {
       "path": "assets/textures/metal.webp",
       "size": 64070,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/outfit_black.webp",
+      "size": 14340,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/outfit_camo.webp",
+      "size": 20308,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/outfit_desert.webp",
+      "size": 24738,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/outfit_olive.webp",
+      "size": 14872,
       "category": "textures"
     },
     {

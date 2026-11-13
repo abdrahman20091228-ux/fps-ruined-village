@@ -172,7 +172,7 @@ async function buildWorld() {
   await audio.loadClips(AUDIO_CLIPS, (url) => assets.getArrayBuffer(url));
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   totalEnemies = enemySys.getRemainingCount();
-  player.spawn({ x: 0, y: 0.25, z: 30 }, 0);
+  player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
 }
 
 async function restartMission() {
@@ -180,7 +180,7 @@ async function restartMission() {
   weapons.resetAll();
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   totalEnemies = enemySys.getRemainingCount();
-  player.spawn({ x: 0, y: 0.25, z: 30 }, 0);
+  player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
   document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
   document.getElementById('damage-arrow').classList.add('hidden');
 
@@ -209,7 +209,7 @@ function bindUI() {
       // Ensure selected difficulty applies cleanly on fresh deploy
       await enemySys.spawnVillageSquad(village, settings.difficulty);
       totalEnemies = enemySys.getRemainingCount();
-      player.spawn({ x: 0, y: 0.25, z: 30 }, 0);
+      player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
       weapons.resetAll();
     }
     mainMenu.classList.add('hidden');
@@ -271,6 +271,8 @@ function bindUI() {
   });
 
   const setSens = document.getElementById('set-sensitivity');
+  const setGyroSens = document.getElementById('set-gyro-sens');
+  const setGyroEnabled = document.getElementById('set-gyro-enabled');
   const setRes = document.getElementById('set-res-scale');
   const setQual = document.getElementById('set-quality');
   const setFps = document.getElementById('set-fps-cap');
@@ -280,6 +282,8 @@ function bindUI() {
   const setDebug = document.getElementById('set-debug');
 
   setSens.value = settings.sensitivity;
+  setGyroSens.value = settings.gyroSensitivity;
+  setGyroEnabled.checked = settings.gyroEnabled;
   setRes.value = settings.resolutionScale;
   setQual.value = settings.quality;
   setFps.value = String(settings.fpsCap);
@@ -289,7 +293,8 @@ function bindUI() {
   setDebug.checked = settings.showDebug;
 
   const syncLabels = () => {
-    document.getElementById('val-sensitivity').textContent = Number(settings.sensitivity).toFixed(1);
+    document.getElementById('val-sensitivity').textContent = Number(settings.sensitivity).toFixed(2);
+    document.getElementById('val-gyro-sens').textContent = Number(settings.gyroSensitivity).toFixed(1);
     document.getElementById('val-res-scale').textContent = Number(settings.resolutionScale).toFixed(2);
     document.getElementById('val-volume').textContent = `${Math.round(settings.volume * 100)}%`;
     document.getElementById('val-btn-size').textContent = `${Number(settings.buttonSize).toFixed(2)}x`;
@@ -304,6 +309,8 @@ function bindUI() {
 
   const onChange = () => {
     settings.sensitivity = Number(setSens.value);
+    settings.gyroSensitivity = Number(setGyroSens.value);
+    settings.gyroEnabled = setGyroEnabled.checked;
     settings.resolutionScale = Number(setRes.value);
     settings.quality = setQual.value;
     settings.fpsCap = Number(setFps.value);
@@ -318,7 +325,7 @@ function bindUI() {
     syncLabels();
   };
 
-  [setSens, setRes, setQual, setFps, setVol, setBtnSize, setBtnOff, setDebug].forEach((el) =>
+  [setSens, setGyroSens, setGyroEnabled, setRes, setQual, setFps, setVol, setBtnSize, setBtnOff, setDebug].forEach((el) =>
     el.addEventListener('input', onChange)
   );
 }
@@ -436,8 +443,8 @@ async function boot() {
         document.getElementById('interact-prompt').classList.toggle('hidden', !nearestDoor);
       } else {
         menuOrbitAngle += renderDt * 0.08;
-        engine.camera.position.set(Math.sin(menuOrbitAngle) * 15, 5.8, 10 + Math.cos(menuOrbitAngle) * 12);
-        engine.camera.lookAt(0, 1.5, -6);
+        engine.camera.position.set(Math.sin(menuOrbitAngle) * 14, 7.2, 12 + Math.cos(menuOrbitAngle) * 10);
+        engine.camera.lookAt(0, 3.4, -14);
       }
     }
   );
