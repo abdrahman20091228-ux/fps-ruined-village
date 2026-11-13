@@ -58,10 +58,62 @@ export class GameEngine {
     this._running = false;
     this._overBudgetFrames = 0;
 
+    this._initPostGrade();
     this.applySettings(settings);
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.measureDisplayRefreshRate();
+  }
+
+  _initPostGrade() {
+    this._gradeEnabled = true;
+    this._renderTarget = new THREE.WebGLRenderTarget(1, 1, {
+      type: THREE.HalfFloatType,
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      depthBuffer: true,
+    });
+    this._gradeScene = new THREE.Scene();
+    this._gradeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: this._renderTarget.texture },
+        uTime: { value: 0 },
+      },
+      depthTest: false,
+      depthWrite: false,
+      vertexShader: `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        varying vec2 vUv;
+        vec3 aces(vec3 x) {
+          float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+          return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+        }
+        void main() {
+          vec3 col = texture2D(tDiffuse, vUv).rgb * 1.05;
+          col = aces(col);
+          col = pow(col, vec3(1.0 / 2.2));
+          // Contrast 1.08 & dusty desaturation 0.88
+          col = (col - 0.5) * 1.08 + 0.5;
+          float lum = dot(col, vec3(0.299, 0.587, 0.114));
+          col = mix(vec3(lum), col, 0.88);
+          // Subtle vignette
+          vec2 d = vUv - 0.5;
+          col *= 1.0 - dot(d, d) * 0.42;
+          // Very mild 1.8% grain
+          float g = fract(sin(dot(vUv * 512.0 + uTime, vec2(12.9898, 78.233))) * 43758.5453);
+          col += (g - 0.5) * 0.018;
+          gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
+        }
+      `,
+    });
+    this._gradeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat);
+    this._gradeScene.add(this._gradeQuad);
   }
 
   measureDisplayRefreshRate() {
@@ -90,6 +142,7 @@ export class GameEngine {
     const preset = QUALITY_PRESETS[settings.quality] || QUALITY_PRESETS.medium;
     const dpr = Math.min(window.devicePixelRatio || 1, 2) * (settings.resolutionScale || 0.85);
     this.renderer.setPixelRatio(Math.max(0.5, dpr));
+    this._gradeEnabled = settings.quality !== 'low';
 
     if (this.sunLight.shadow.mapSize.width !== preset.shadowSize) {
       this.sunLight.shadow.mapSize.set(preset.shadowSize, preset.shadowSize);
@@ -109,6 +162,10 @@ export class GameEngine {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    if (this._renderTarget) {
+      const pr = this.renderer.getPixelRatio();
+      this._renderTarget.setSize(Math.max(1, Math.floor(w * pr)), Math.max(1, Math.floor(h * pr)));
+    }
   }
 
   updateShadowFocus(playerPos) {
@@ -185,8 +242,17 @@ export class GameEngine {
 
       // Reset renderer.info manually before render so triangles include shadow + main pass
       this.renderer.info.reset();
-      this.renderer.render(this.scene, this.camera);
-      this.triangles = this.renderer.info.render.triangles;
+      if (this._gradeEnabled && this._renderTarget) {
+        this.renderer.setRenderTarget(this._renderTarget);
+        this.renderer.render(this.scene, this.camera);
+        this.triangles = this.renderer.info.render.triangles;
+        this.renderer.setRenderTarget(null);
+        this._gradeQuad.material.uniforms.uTime.value = now * 0.001;
+        this.renderer.render(this._gradeScene, this._gradeCam);
+      } else {
+        this.renderer.render(this.scene, this.camera);
+        this.triangles = this.renderer.info.render.triangles;
+      }
 
       this._fpsFrames++;
       if (now - this._fpsWindowStart >= 500) {

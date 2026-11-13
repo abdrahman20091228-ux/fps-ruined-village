@@ -1,18 +1,23 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T09:14:57.652Z",
-  "totalBytes": 236937,
-  "fileCount": 25,
+  "generatedAt": "2026-11-13T09:20:20.266Z",
+  "totalBytes": 4235171,
+  "fileCount": 48,
   "categories": {
-    "code": 92445,
-    "models": 0,
-    "textures": 0,
-    "audio": 144492
+    "code": 100483,
+    "models": 2327084,
+    "textures": 1649910,
+    "audio": 157694
   },
   "files": [
     {
       "path": "src/audio/audioSystem.js",
       "size": 12709,
+      "category": "code"
+    },
+    {
+      "path": "src/core/assetLoader.js",
+      "size": 5520,
       "category": "code"
     },
     {
@@ -22,7 +27,7 @@
     },
     {
       "path": "src/core/engine.js",
-      "size": 7019,
+      "size": 9537,
       "category": "code"
     },
     {
@@ -132,8 +137,118 @@
     },
     {
       "path": "assets/audio/wind_ambience.ogg",
-      "size": 64751,
+      "size": 77953,
       "category": "audio"
+    },
+    {
+      "path": "assets/models/akm.glb",
+      "size": 51544,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/ammo_box.glb",
+      "size": 62628,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/barrel.glb",
+      "size": 119384,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/dead_tree1.glb",
+      "size": 14820,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/dead_tree2.glb",
+      "size": 20760,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/m4.glb",
+      "size": 64532,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/mil_crate.glb",
+      "size": 130360,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/pistol.glb",
+      "size": 33380,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/road_barrier.glb",
+      "size": 113324,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/ruin_shell1.glb",
+      "size": 353404,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/ruin_shell2.glb",
+      "size": 259796,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/soldier_lod1.glb",
+      "size": 301572,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/soldier_lod2.glb",
+      "size": 270384,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/soldier.glb",
+      "size": 408824,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/wreck_car.glb",
+      "size": 122372,
+      "category": "models"
+    },
+    {
+      "path": "assets/textures/brick.webp",
+      "size": 335336,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/concrete.webp",
+      "size": 290320,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/dirt.webp",
+      "size": 330632,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/metal.webp",
+      "size": 64070,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/plaster.webp",
+      "size": 327578,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/roof_tiles.webp",
+      "size": 253242,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/wood.webp",
+      "size": 48732,
+      "category": "textures"
     }
   ]
 }
