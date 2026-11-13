@@ -5,6 +5,9 @@ import { PhysicsWorld } from './core/physics.js';
 import { PlayerController } from './player/controller.js';
 import { InputManager } from './input/touchControls.js';
 import { DoorSystem } from './world/doors.js';
+import { EffectsSystem } from './fx/effects.js';
+import { AudioSystem } from './audio/audioSystem.js';
+import { WeaponSystem } from './weapons/weapons.js';
 
 const settings = loadSettings();
 const canvas = document.getElementById('game-canvas');
@@ -12,13 +15,40 @@ const engine = new GameEngine(canvas, settings);
 const physics = new PhysicsWorld();
 const player = new PlayerController(physics, engine.camera);
 const doorSystem = new DoorSystem(engine.scene, physics);
+const effects = new EffectsSystem(engine.scene);
+const audio = new AudioSystem(physics, settings);
+const weapons = new WeaponSystem(engine.camera, physics, effects, audio);
 
 let gameState = 'loading'; // loading | menu | playing | paused | ended
 let activeTestStageBuilt = false;
+let hitStopTimer = 0;
+let hitMarkerTimer = 0;
+
+const AUDIO_CLIPS = {
+  pistol_fire: './assets/audio/pistol_fire.ogg',
+  akm_fire: './assets/audio/akm_fire.ogg',
+  m4_fire: './assets/audio/m4_fire.ogg',
+  reload: './assets/audio/reload.ogg',
+  empty_click: './assets/audio/empty_click.ogg',
+  step_sand1: './assets/audio/step_sand1.ogg',
+  step_sand2: './assets/audio/step_sand2.ogg',
+  step_stone1: './assets/audio/step_stone1.ogg',
+  step_stone2: './assets/audio/step_stone2.ogg',
+  door_open: './assets/audio/door_open.ogg',
+  impact_concrete: './assets/audio/impact_concrete.ogg',
+  impact_wood: './assets/audio/impact_wood.ogg',
+  impact_metal: './assets/audio/impact_metal.ogg',
+  wind_ambience: './assets/audio/wind_ambience.ogg',
+};
 
 const input = new InputManager(settings, () => {
-  // First tap gesture hook (unlocks fullscreen/landscape; audio hook added in Phase 2)
+  audio.unlock();
 });
+
+function showHitMarker() {
+  hitMarkerTimer = 0.14;
+  document.getElementById('hit-marker').classList.remove('hidden');
+}
 
 function buildPhase1Sandbox() {
   if (activeTestStageBuilt) return;
@@ -35,20 +65,29 @@ function buildPhase1Sandbox() {
   engine.scene.add(ground);
   physics.addStaticBox({ x: 0, y: -0.5, z: 0 }, { x: 40, y: 0.5, z: 40 }, null, { material: 'dirt', kind: 'terrain' });
 
-  // Test room with doorway + stairs + slope
+  // Test room with doorway + roof (indoor audio test zone!)
   const walls = [
-    { pos: { x: -4.5, y: 1.6, z: -8 }, half: { x: 2.0, y: 1.6, z: 0.2 } },
-    { pos: { x: 1.5, y: 1.6, z: -8 }, half: { x: 2.0, y: 1.6, z: 0.2 } },
-    { pos: { x: -1.5, y: 2.75, z: -8 }, half: { x: 1.0, y: 0.45, z: 0.2 } }, // lintel over door
+    { pos: { x: -4.5, y: 1.6, z: -8 }, half: { x: 2.0, y: 1.6, z: 0.2 }, mat: 'concrete', pen: false },
+    { pos: { x: 1.5, y: 1.6, z: -8 }, half: { x: 2.0, y: 1.6, z: 0.2 }, mat: 'concrete', pen: false },
+    { pos: { x: -1.5, y: 2.75, z: -8 }, half: { x: 1.0, y: 0.45, z: 0.2 }, mat: 'plaster', pen: true },
+    { pos: { x: -6.5, y: 1.6, z: -11 }, half: { x: 0.2, y: 1.6, z: 3.0 }, mat: 'plaster', pen: true },
+    { pos: { x: 3.5, y: 1.6, z: -11 }, half: { x: 0.2, y: 1.6, z: 3.0 }, mat: 'plaster', pen: true },
+    { pos: { x: -1.5, y: 1.6, z: -14 }, half: { x: 5.0, y: 1.6, z: 0.2 }, mat: 'concrete', pen: false },
+    { pos: { x: -1.5, y: 3.3, z: -11 }, half: { x: 5.2, y: 0.15, z: 3.2 }, mat: 'wood', pen: true },
   ];
   for (const w of walls) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(w.half.x * 2, w.half.y * 2, w.half.z * 2), wallMat);
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(w.half.x * 2, w.half.y * 2, w.half.z * 2),
+      w.mat === 'wood' ? woodMat : wallMat
+    );
     m.position.set(w.pos.x, w.pos.y, w.pos.z);
     m.castShadow = true;
     m.receiveShadow = true;
     engine.scene.add(m);
-    physics.addStaticBox(w.pos, w.half, null, { material: 'concrete', kind: 'wall' });
+    physics.addStaticBox(w.pos, w.half, null, { material: w.mat, kind: 'wall', penetrable: w.pen });
   }
+
+  audio.setIndoorZones([{ minX: -6.5, maxX: 3.5, minY: 0, maxY: 3.4, minZ: -14, maxZ: -8 }]);
 
   // Interactive Door in doorway (-2.05 .. -0.95)
   doorSystem.createDoor({
@@ -103,12 +142,12 @@ function bindUI() {
   const settingsModal = document.getElementById('settings-modal');
   const loadoutModal = document.getElementById('loadout-modal');
 
-  // Show menu immediately in Phase 1 (real manifest byte-loader comes in Phase 6)
   loadingScreen.classList.add('hidden');
   mainMenu.classList.remove('hidden');
   gameState = 'menu';
 
   const startPlay = () => {
+    audio.unlock();
     input.requestFullscreenLandscape();
     mainMenu.classList.add('hidden');
     hud.classList.remove('hidden');
@@ -141,7 +180,6 @@ function bindUI() {
     loadoutModal.classList.add('hidden');
   });
 
-  // Difficulty buttons
   document.querySelectorAll('#difficulty-selector .seg-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.diff === settings.difficulty);
     btn.addEventListener('click', () => {
@@ -153,7 +191,6 @@ function bindUI() {
     });
   });
 
-  // Settings inputs
   const setSens = document.getElementById('set-sensitivity');
   const setRes = document.getElementById('set-res-scale');
   const setQual = document.getElementById('set-quality');
@@ -198,6 +235,7 @@ function bindUI() {
     saveSettings(settings);
     engine.applySettings(settings);
     input.applyLayoutSettings(settings);
+    audio.setVolume(settings.volume);
     syncLabels();
   };
 
@@ -211,49 +249,89 @@ async function boot() {
   buildPhase1Sandbox();
   bindUI();
 
+  // Preload audio clips asynchronously
+  audio.loadClips(AUDIO_CLIPS).catch(() => {});
+
   let nearestDoor = null;
   let menuOrbitAngle = 0;
 
   engine.startLoop(
     (dt) => {
       if (gameState !== 'playing') return;
+      if (hitStopTimer > 0) {
+        hitStopTimer -= dt;
+        return;
+      }
+
       input.pollKeyboardMovement();
       const cmd = input.consumePulses();
       player.yaw -= cmd.lookDX;
       player.pitch = THREE.MathUtils.clamp(player.pitch - cmd.lookDY, -1.42, 1.42);
 
-      player.step(dt, cmd);
-      doorSystem.step(dt);
+      player.step(dt, cmd, (feetPos) => {
+        const key = audio.isIndoors
+          ? (Math.random() < 0.5 ? 'step_stone1' : 'step_stone2')
+          : (Math.random() < 0.5 ? 'step_sand1' : 'step_sand2');
+        audio.playClip(key, feetPos, 0.42, 0.08);
+      });
 
+      doorSystem.step(dt);
       nearestDoor = doorSystem.findNearestInteractable(player.getFeetPosition());
       if (cmd.interact && nearestDoor) {
-        doorSystem.toggle(nearestDoor);
+        doorSystem.toggle(nearestDoor, (d) => audio.playClip('door_open', d.hingePos, 0.72));
       }
 
+      weapons.update(
+        dt,
+        cmd,
+        player,
+        () => {
+          hitStopTimer = 0.038;
+        },
+        showHitMarker
+      );
+
+      effects.update(dt);
       physics.step();
     },
     (alpha, renderDt) => {
+      if (hitMarkerTimer > 0) {
+        hitMarkerTimer -= renderDt;
+        if (hitMarkerTimer <= 0) document.getElementById('hit-marker').classList.add('hidden');
+      }
+
       if (gameState === 'playing') {
         physics.interpolate(alpha);
         player.applyCamera(alpha);
         engine.updateShadowFocus(player.currPos);
 
-        // Update HUD telemetry
+        const fwd = player.getAimDirection();
+        audio.updateListener(engine.camera.position, fwd, new THREE.Vector3(0, 1, 0));
+
+        // HUD telemetry
         document.getElementById('fps-counter').textContent = `FPS: ${engine.fps} | Hz: ${engine.detectedHz}`;
         const debugEl = document.getElementById('debug-tris');
         debugEl.classList.toggle('hidden', !settings.showDebug);
         debugEl.textContent = `TRIS: ${engine.triangles.toLocaleString()} / ${(MAX_TRIANGLES / 1000).toFixed(0)}k`;
 
-        // Compass
+        // Zone & compass
         const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);
         const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-        const cardinal = dirs[Math.round(deg / 45) % 8];
-        document.getElementById('compass-dir').textContent = `${cardinal} ${String(deg).padStart(3, '0')}°`;
+        document.getElementById('compass-dir').textContent = `${dirs[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
+        document.getElementById('zone-indicator').textContent = audio.isIndoors ? 'INDOORS' : 'OUTDOORS';
+
+        // Weapons & HP HUD
+        document.getElementById('weapon-name').textContent = weapons.isReloading
+          ? `${weapons.activeDef.name} (RELOAD)`
+          : weapons.activeDef.name;
+        document.getElementById('ammo-mag').textContent = String(weapons.activeAmmo.mag);
+        document.getElementById('ammo-reserve').textContent = String(weapons.activeAmmo.reserve);
+        document.getElementById('hp-value').textContent = String(Math.max(0, Math.round(player.health)));
+        document.getElementById('hp-bar-fill').style.width = `${Math.max(0, (player.health / player.maxHealth) * 100)}%`;
 
         document.getElementById('btn-door').classList.toggle('hidden', !nearestDoor);
         document.getElementById('interact-prompt').classList.toggle('hidden', !nearestDoor);
       } else {
-        // Atmospheric menu camera pan
         menuOrbitAngle += renderDt * 0.14;
         engine.camera.position.set(Math.sin(menuOrbitAngle) * 14, 5.2, Math.cos(menuOrbitAngle) * 14);
         engine.camera.lookAt(0, 1.5, -4);

@@ -1,15 +1,20 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T09:11:16.257Z",
-  "totalBytes": 61437,
-  "fileCount": 9,
+  "generatedAt": "2026-11-13T09:14:57.652Z",
+  "totalBytes": 236937,
+  "fileCount": 25,
   "categories": {
-    "code": 61437,
+    "code": 92445,
     "models": 0,
     "textures": 0,
-    "audio": 0
+    "audio": 144492
   },
   "files": [
+    {
+      "path": "src/audio/audioSystem.js",
+      "size": 12709,
+      "category": "code"
+    },
     {
       "path": "src/core/config.js",
       "size": 1511,
@@ -37,7 +42,7 @@
     },
     {
       "path": "src/main.js",
-      "size": 10723,
+      "size": 14020,
       "category": "code"
     },
     {
@@ -51,9 +56,84 @@
       "category": "code"
     },
     {
+      "path": "src/weapons/weapons.js",
+      "size": 15002,
+      "category": "code"
+    },
+    {
       "path": "src/world/doors.js",
       "size": 3289,
       "category": "code"
+    },
+    {
+      "path": "assets/audio/akm_fire.ogg",
+      "size": 10027,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/door_open.ogg",
+      "size": 10226,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/empty_click.ogg",
+      "size": 2323,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/impact_concrete.ogg",
+      "size": 6285,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/impact_metal.ogg",
+      "size": 4803,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/impact_wood.ogg",
+      "size": 5177,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/m4_fire.ogg",
+      "size": 8800,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/pistol_fire.ogg",
+      "size": 6264,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/reload.ogg",
+      "size": 12218,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/step_sand1.ogg",
+      "size": 3836,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/step_sand2.ogg",
+      "size": 3653,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/step_stone1.ogg",
+      "size": 3037,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/step_stone2.ogg",
+      "size": 3092,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/wind_ambience.ogg",
+      "size": 64751,
+      "category": "audio"
     }
   ]
 }
