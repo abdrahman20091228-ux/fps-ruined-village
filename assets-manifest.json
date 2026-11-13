@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-13T09:11:16.257Z",
+  "totalBytes": 61437,
+  "fileCount": 9,
+  "categories": {
+    "code": 61437,
+    "models": 0,
+    "textures": 0,
+    "audio": 0
+  },
+  "files": [
+    {
+      "path": "src/core/config.js",
+      "size": 1511,
+      "category": "code"
+    },
+    {
+      "path": "src/core/engine.js",
+      "size": 7019,
+      "category": "code"
+    },
+    {
+      "path": "src/core/physics.js",
+      "size": 5607,
+      "category": "code"
+    },
+    {
+      "path": "src/fx/effects.js",
+      "size": 6599,
+      "category": "code"
+    },
+    {
+      "path": "src/input/touchControls.js",
+      "size": 8164,
+      "category": "code"
+    },
+    {
+      "path": "src/main.js",
+      "size": 10723,
+      "category": "code"
+    },
+    {
+      "path": "src/player/controller.js",
+      "size": 5516,
+      "category": "code"
+    },
+    {
+      "path": "src/styles.css",
+      "size": 13009,
+      "category": "code"
+    },
+    {
+      "path": "src/world/doors.js",
+      "size": 3289,
+      "category": "code"
+    }
+  ]
+}

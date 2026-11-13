@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#14171a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="icon" href="data:," />
+  <title>ASHES OF VALE — Tactical Mobile FPS</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+        "@dimforge/rapier3d-compat": "https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Blocking Portrait Overlay -->
+  <div id="rotate-overlay" class="overlay-blocking hidden" role="alert" aria-live="assertive">
+    <div class="rotate-card">
+      <div class="rotate-icon" aria-hidden="true">📱↻</div>
+      <h2>ROTATE DEVICE TO LANDSCAPE</h2>
+      <p>This tactical FPS requires landscape orientation from the first frame.</p>
+      <button id="btn-force-landscape" class="btn-tactical">ENTER FULLSCREEN &amp; LANDSCAPE</button>
+    </div>
+  </div>
+
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="screen-overlay">
+    <div class="loading-panel">
+      <div class="brand-badge">SECTOR 04 // RECON BUILD</div>
+      <h1 class="game-title">ASHES OF VALE</h1>
+      <p class="subtitle">CLOSE-QUARTERS RUINED VILLAGE ASSAULT</p>
+
+      <div id="mobile-data-warning" class="data-warning hidden">
+        <p id="mobile-data-text">Large download detected on cellular/save-data connection.</p>
+        <button id="btn-confirm-download" class="btn-tactical btn-primary">DOWNLOAD &amp; DEPLOY</button>
+      </div>
+
+      <div id="loading-progress-box">
+        <div class="loading-stats-row">
+          <span id="loading-status-text">Inspecting manifest...</span>
+          <span id="loading-bytes-text">0.00 / 0.00 MB</span>
+        </div>
+        <div class="progress-track">
+          <div id="loading-progress-bar" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="loading-breakdown" class="loading-breakdown"></div>
+        <div id="loading-cache-info" class="loading-cache-info"></div>
+      </div>
+
+      <div id="loading-error-box" class="error-box hidden">
+        <p id="loading-error-text">Failed to load asset.</p>
+        <button id="btn-retry-load" class="btn-tactical btn-primary">RETRY DOWNLOAD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Menu -->
+  <div id="main-menu" class="screen-overlay hidden">
+    <div class="menu-shell">
+      <div class="menu-left">
+        <div class="mission-tag">OPERATION: ASHEN THRESHOLD // SINGLE PLAYER</div>
+        <h1 class="menu-title">ASHES OF VALE</h1>
+        <p class="menu-brief">
+          Breach 6 ruined village houses, clear scattered hostiles indoors and along rubble-choked alleys, and secure the sector.
+        </p>
+
+        <div class="menu-section">
+          <div class="section-label">DIFFICULTY</div>
+          <div class="segmented-group" id="difficulty-selector">
+            <button class="seg-btn" data-diff="recruit">RECRUIT</button>
+            <button class="seg-btn active" data-diff="regular">REGULAR</button>
+            <button class="seg-btn" data-diff="veteran">VETERAN</button>
+          </div>
+        </div>
+
+        <div class="menu-actions">
+          <button id="btn-deploy" class="btn-tactical btn-primary btn-lg">DEPLOY TO VILLAGE</button>
+          <div class="menu-row-secondary">
+            <button id="btn-resume" class="btn-tactical hidden">RESUME</button>
+            <button id="btn-restart-menu" class="btn-tactical hidden">RESTART</button>
+            <button id="btn-open-settings" class="btn-tactical">SETTINGS</button>
+            <button id="btn-open-loadout" class="btn-tactical">LOADOUT &amp; INTEL</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-right">
+        <div class="intel-card">
+          <div class="intel-header">
+            <span>TACTICAL BRIEFING</span>
+            <span class="intel-status">READY</span>
+          </div>
+          <ul class="intel-list">
+            <li><span>AREA</span><strong>Ruined Village (8 Structures)</strong></li>
+            <li><span>HOSTILES</span><strong>Up to 12 Armed Combatants</strong></li>
+            <li><span>ARSENAL</span><strong>M9 Pistol • AKM • M4 Carbine</strong></li>
+            <li><span>PENETRATION</span><strong>Wood &amp; Plaster Only</strong></li>
+            <li><span>ACOUSTICS</span><strong>3D Occlusion + Indoor Reverb</strong></li>
+          </ul>
+          <div id="menu-cache-badge" class="cache-badge">Cache verified</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loadout & Intel Modal -->
+  <div id="loadout-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>ARSENAL &amp; CONTROLS</h2>
+        <button id="btn-close-loadout" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body loadout-grid">
+        <div class="weapon-spec">
+          <h3>M9 TACTICAL PISTOL</h3>
+          <p>Fast draw &amp; ADS, tight close-range control, 15-round mag. Minimal penetration.</p>
+        </div>
+        <div class="weapon-spec">
+          <h3>AKM (7.62×39mm)</h3>
+          <p>High stopping power, heavy upward/right recoil kick, punches cleanly through wood &amp; plaster.</p>
+        </div>
+        <div class="weapon-spec">
+          <h3>M4 CARBINE (5.56×45mm)</h3>
+          <p>High cyclic fire rate, controllable burst recoil, fast reload for room clearing.</p>
+        </div>
+        <div class="weapon-spec">
+          <h3>TOUCH CONTROLS</h3>
+          <p>Left thumb: move/sprint • Right screen: aim • Tap Door icon near doors to breach.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>FIELD SETTINGS</h2>
+        <button id="btn-close-settings" class="btn-icon">✕</button>
+      </div>
+      <div class="modal-body settings-grid">
+        <label class="setting-row">
+          <span>Look Sensitivity <strong id="val-sensitivity">1.0</strong></span>
+          <input id="set-sensitivity" type="range" min="0.4" max="2.5" step="0.1" value="1.0" />
+        </label>
+        <label class="setting-row">
+          <span>Resolution Scale <strong id="val-res-scale">0.85</strong></span>
+          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.85" />
+        </label>
+        <label class="setting-row">
+          <span>Graphics Quality</span>
+          <select id="set-quality">
+            <option value="low">Low (Max Battery / 200k tris)</option>
+            <option value="medium" selected>Medium (Balanced / 320k tris)</option>
+            <option value="high">High (Sharp Shadows / 450k tris)</option>
+          </select>
+        </label>
+        <label class="setting-row">
+          <span>FPS Cap <small id="hz-info" class="hz-note"></small></span>
+          <select id="set-fps-cap">
+            <option value="30">30 FPS</option>
+            <option value="60" selected>60 FPS</option>
+            <option value="90">90 FPS</option>
+            <option value="120">120 FPS</option>
+          </select>
+        </label>
+        <label class="setting-row">
+          <span>Master Volume <strong id="val-volume">80%</strong></span>
+          <input id="set-volume" type="range" min="0" max="1" step="0.05" value="0.8" />
+        </label>
+        <label class="setting-row">
+          <span>Button Size <strong id="val-btn-size">1.0x</strong></span>
+          <input id="set-btn-size" type="range" min="0.75" max="1.35" step="0.05" value="1.0" />
+        </label>
+        <label class="setting-row">
+          <span>Button Vertical Offset <strong id="val-btn-offset">0px</strong></span>
+          <input id="set-btn-offset" type="range" min="-40" max="40" step="5" value="0" />
+        </label>
+        <label class="setting-row">
+          <span>Show Debug Triangles</span>
+          <input id="set-debug" type="checkbox" checked />
+        </label>
+        <div class="setting-actions">
+          <button id="btn-clear-cache" class="btn-tactical">CLEAR OFFLINE CACHE</button>
+          <span id="cache-clear-status" class="cache-note"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- End / Mission Result Screen -->
+  <div id="end-screen" class="screen-overlay hidden">
+    <div class="end-card">
+      <div id="end-badge" class="brand-badge">MISSION STATUS</div>
+      <h2 id="end-title">SECTOR SECURED</h2>
+      <p id="end-summary">All hostiles neutralized.</p>
+      <div class="end-actions">
+        <button id="btn-restart-end" class="btn-tactical btn-primary">RESTART MISSION</button>
+        <button id="btn-menu-end" class="btn-tactical">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Telemetry Bar (Small FPS + Triangle Debug + Objective + Compass) -->
+  <div id="hud" class="hidden">
+    <div id="top-telemetry">
+      <div id="fps-counter">FPS: -- | Hz: --</div>
+      <div id="debug-tris">TRIS: 0 / 500k | LOD: MED</div>
+    </div>
+
+    <div id="compass-bar">
+      <span id="compass-dir">N 000°</span>
+      <span class="sep">•</span>
+      <span id="zone-indicator">OUTDOORS</span>
+    </div>
+
+    <div id="objective-box">
+      <span class="obj-label">HOSTILES</span>
+      <span id="objective-count">0 / 0</span>
+    </div>
+
+    <button id="btn-pause-hud" class="hud-icon-btn" aria-label="Pause Menu">☰</button>
+
+    <!-- Center Crosshair & Hit Marker -->
+    <div id="crosshair">
+      <div class="ch-line ch-top"></div>
+      <div class="ch-line ch-bottom"></div>
+      <div class="ch-line ch-left"></div>
+      <div class="ch-line ch-right"></div>
+      <div id="hit-marker" class="hidden"></div>
+    </div>
+
+    <div id="damage-vignette"></div>
+    <div id="damage-arrow" class="hidden"></div>
+    <div id="interact-prompt" class="hidden">[DOOR] OPEN / CLOSE</div>
+
+    <!-- Bottom Status -->
+    <div id="hud-bottom-left">
+      <div class="hp-label">HP <span id="hp-value">100</span></div>
+      <div class="hp-bar-track"><div id="hp-bar-fill" style="width: 100%"></div></div>
+    </div>
+
+    <div id="hud-bottom-right">
+      <div id="weapon-name">M4 CARBINE</div>
+      <div id="ammo-display"><span id="ammo-mag">30</span> / <span id="ammo-reserve">120</span></div>
+    </div>
+  </div>
+
+  <!-- Mobile Touch Controls -->
+  <div id="touch-controls" class="hidden">
+    <div id="joystick-zone">
+      <div id="joystick-base" class="hidden">
+        <div id="joystick-knob"></div>
+      </div>
+    </div>
+    <div id="look-zone"></div>
+
+    <div id="touch-buttons-right">
+      <button id="btn-fire" class="t-btn t-btn-fire">FIRE</button>
+      <button id="btn-ads" class="t-btn t-btn-ads">ADS</button>
+      <button id="btn-reload" class="t-btn t-btn-sm">R</button>
+      <button id="btn-jump" class="t-btn t-btn-sm">JMP</button>
+      <button id="btn-crouch" class="t-btn t-btn-sm">CRC</button>
+      <button id="btn-door" class="t-btn t-btn-door hidden">DOOR</button>
+    </div>
+
+    <div id="touch-buttons-left">
+      <button id="btn-sprint" class="t-btn t-btn-sm">RUN</button>
+      <button id="btn-weapon" class="t-btn t-btn-wide">WPN</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

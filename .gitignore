@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+tmp/
+.tmp/
+*.bak
+*.swp
+__pycache__/
