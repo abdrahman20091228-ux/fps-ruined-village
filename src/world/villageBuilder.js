@@ -26,6 +26,26 @@ function makeBoxGeo(w, h, d, x, y, z, rx = 0, ry = 0, rz = 0, uvScale = 0.25) {
   return g;
 }
 
+function ensureFloatAttributes(geo) {
+  for (const name of ['position', 'normal', 'uv']) {
+    const attr = geo.getAttribute(name);
+    if (!attr) continue;
+    if (!attr.isInterleavedBufferAttribute && attr.array instanceof Float32Array && !attr.normalized) {
+      continue;
+    }
+    const itemSize = attr.itemSize;
+    const arr = new Float32Array(attr.count * itemSize);
+    for (let i = 0; i < attr.count; i++) {
+      arr[i * itemSize] = attr.getX(i);
+      if (itemSize >= 2) arr[i * itemSize + 1] = attr.getY(i);
+      if (itemSize >= 3) arr[i * itemSize + 2] = attr.getZ(i);
+      if (itemSize >= 4) arr[i * itemSize + 3] = attr.getW(i);
+    }
+    geo.setAttribute(name, new THREE.BufferAttribute(arr, itemSize, false));
+  }
+  return geo;
+}
+
 export class VillageBuilder {
   constructor(scene, physics, doorSystem, assetLoader) {
     this.scene = scene;
@@ -86,7 +106,7 @@ export class VillageBuilder {
 
   _buildTerrainAndRoads() {
     // Mossy woodland earth ground + forested perimeter ridges outside playable sector
-    const geo = new THREE.PlaneGeometry(145, 155, 48, 56);
+    const geo = new THREE.PlaneGeometry(145, 155, 24, 28);
     geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
@@ -185,7 +205,7 @@ export class VillageBuilder {
     const dz = endZ - startZ;
     const dy = yTop - yBottom;
     const horizLen = Math.hypot(dx, dz);
-    const width = Math.abs(dx) < 0.2 ? 1.6 : 1.6;
+    const width = 1.6;
 
     // Visual stair treads
     for (let i = 0; i < stepCount; i++) {
@@ -199,36 +219,36 @@ export class VillageBuilder {
       buckets.concrete.push(makeBoxGeo(treadW, stepH - yBottom, treadD, sx, stepY, sz));
     }
 
-    // Smooth invisible inclined Rapier ramp box collider matching stair pitch!
+    // Smooth inclined Rapier ramp box collider matching stair slope direction!
     const slope = Math.atan2(dy, horizLen);
-    const rampLen = Math.hypot(horizLen, dy) + 0.22;
+    const rampLen = Math.hypot(horizLen, dy) + 0.28;
     const cx = worldOx + (startX + endX) * 0.5;
     const cz = worldOz + (startZ + endZ) * 0.5;
-    const cy = (yBottom + yTop) * 0.5 - 0.08;
+    const cy = (yBottom + yTop) * 0.5 - 0.10;
 
     let rx = 0;
     let rz = 0;
     let boxW = width;
     let boxD = rampLen;
     if (Math.abs(dz) >= Math.abs(dx)) {
-      // Climbing along Z (dz < 0 means North -Z goes UP => pitch +slope around X)
+      // Right-hand rule around +X: R_x(+slope)*(0,0,-1) = (0, +sin(slope), -cos(slope)) -> climbs UP along -Z!
       rx = dz < 0 ? slope : -slope;
     } else {
-      // Climbing along X (dx > 0 means +X goes UP => roll +slope around Z; dx < 0 => -slope)
+      // Right-hand rule around +Z: R_z(+slope)*(1,0,0) = (cos(slope), +sin(slope), 0) -> climbs UP along +X!
       boxW = rampLen;
       boxD = width;
       rz = dx > 0 ? slope : -slope;
     }
     this.physics.addStaticBox(
       { x: cx, y: cy, z: cz },
-      { x: boxW * 0.5, y: 0.14, z: boxD * 0.5 },
+      { x: boxW * 0.5, y: 0.12, z: boxD * 0.5 },
       { x: rx, y: 0, z: rz },
       { material: 'concrete', kind: 'stairs' }
     );
   }
 
   _createDetailedHouse(cfg) {
-    const { cx, cz, W, D, stories, facing, style, breachSide, garage } = cfg;
+    const { cx, cz, W, D, stories, facing, style, breachSide } = cfg;
     const H = 3.1;
     const t = 0.28;
     const buckets = { concrete: [], brick: [], plaster: [], wood: [], roof: [], trimDark: [] };
@@ -246,8 +266,10 @@ export class VillageBuilder {
       }
     };
 
-    // Foundation plinth + Ground floor slab
+    // Foundation plinth + Ground floor slab + Entry threshold step
     addBox(0, 0.1, 0, W + 0.55, 0.22, D + 0.55, 'concrete', false, true);
+    const stepX = facing === 'E' ? W / 2 + 0.48 : -W / 2 - 0.48;
+    addBox(stepX, 0.08, 0, 0.9, 0.16, 1.9, 'concrete', false, true);
 
     const doorHalf = 0.7; // 1.4m comfortable wide doorways!
     const winHalf = 1.25;
@@ -264,14 +286,16 @@ export class VillageBuilder {
 
         if (isEW) {
           const x = side === 'E' ? W / 2 : -W / 2;
+          const outSign = side === 'E' ? 1 : -1;
           if (isDoor) {
             const segLen = (D - doorHalf * 2) / 2;
             addBox(x, yMid, -D / 2 + segLen / 2, t, H, segLen, wallMat);
             addBox(x, yMid, D / 2 - segLen / 2, t, H, segLen, wallMat);
             addBox(x, y0 + 2.68, 0, t, 0.84, doorHalf * 2, 'concrete');
-            // Concrete doorframe trims
+            // Timber porch canopy & concrete doorframe trims
             addBox(x, y0 + 1.15, -doorHalf - 0.06, t + 0.1, 2.3, 0.12, 'trimDark', false, false);
             addBox(x, y0 + 1.15, doorHalf + 0.06, t + 0.1, 2.3, 0.12, 'trimDark', false, false);
+            addBox(x + outSign * 0.45, y0 + 2.48, 0, 0.9, 0.10, 2.1, 'wood', false, false);
             this.doorSystem.createDoor({
               hingePos: { x: cx + x, y: y0, z: cz - doorHalf + 0.06 },
               width: doorHalf * 2 - 0.12,
@@ -282,27 +306,28 @@ export class VillageBuilder {
               material: this.mats.wood,
             });
           } else if (isBreach && floorIdx === 0) {
-            // Clean low breach (0.18m rubble sill -> effortless smooth walk-through)
             addBox(x, yMid, -D / 2 + 1.15, t, H, 2.3, wallMat);
             addBox(x, yMid, D / 2 - 1.15, t, H, 2.3, wallMat);
             addBox(x, y0 + 0.09, 0, t + 0.12, 0.18, D - 4.6, 'brick');
-            // Rebar/rubble teeth overhead
             addBox(x, y0 + 2.86, -0.9, 0.06, 0.45, 0.06, 'trimDark', false, false);
             addBox(x, y0 + 2.88, 0.85, 0.06, 0.4, 0.06, 'trimDark', false, false);
           } else {
-            // Windowed wall (floor 1 or floor 2 overlook!)
             const pier = (D - winHalf * 2) / 2;
             addBox(x, yMid, -D / 2 + pier / 2, t, H, pier, wallMat);
             addBox(x, yMid, D / 2 - pier / 2, t, H, pier, wallMat);
             addBox(x, y0 + 0.5, 0, t, 1.0, winHalf * 2, wallMat);
             addBox(x, y0 + 2.65, 0, t, 0.9, winHalf * 2, wallMat);
-            // Concrete window sill & lintel
             addBox(x, y0 + 1.02, 0, t + 0.14, 0.1, winHalf * 2 + 0.2, 'concrete', false, false);
             addBox(x, y0 + 2.22, 0, t + 0.14, 0.12, winHalf * 2 + 0.2, 'trimDark', false, false);
+            // Exterior wooden shutters & vertical window mullion
+            addBox(x + outSign * (t * 0.5 + 0.04), y0 + 1.62, -winHalf - 0.24, 0.06, 1.1, 0.42, 'wood', false, false);
+            addBox(x + outSign * (t * 0.5 + 0.04), y0 + 1.62, winHalf + 0.24, 0.06, 1.1, 0.42, 'wood', false, false);
+            addBox(x, y0 + 1.62, 0, 0.07, 1.12, 0.07, 'trimDark', false, false);
           }
           lod1.wall.push(makeBoxGeo(t, H, D, x, yMid, 0));
         } else {
           const z = side === 'S' ? D / 2 : -D / 2;
+          const outSign = side === 'S' ? 1 : -1;
           if (isBreach && floorIdx === 0) {
             addBox(-W / 2 + 1.4, yMid, z, 2.8, H, t, wallMat);
             addBox(W / 2 - 1.4, yMid, z, 2.8, H, t, wallMat);
@@ -315,18 +340,20 @@ export class VillageBuilder {
             addBox(0, y0 + 2.65, z, winHalf * 2, 0.9, t, wallMat);
             addBox(0, y0 + 1.02, z, winHalf * 2 + 0.2, 0.1, t + 0.14, 'concrete', false, false);
             addBox(0, y0 + 2.22, z, winHalf * 2 + 0.2, 0.12, t + 0.14, 'trimDark', false, false);
+            addBox(-winHalf - 0.24, y0 + 1.62, z + outSign * (t * 0.5 + 0.04), 0.42, 1.1, 0.06, 'wood', false, false);
+            addBox(winHalf + 0.24, y0 + 1.62, z + outSign * (t * 0.5 + 0.04), 0.42, 1.1, 0.06, 'wood', false, false);
+            addBox(0, y0 + 1.62, z, 0.07, 1.12, 0.07, 'trimDark', false, false);
           }
           lod1.wall.push(makeBoxGeo(W, H, t, 0, yMid, z));
         }
       });
 
-      // Structural corner concrete pilasters (slightly proud of wall face to prevent coplanar Z-fighting)
+      // Structural corner concrete pilasters & belt cornice beam
       for (const sx of [-W / 2, W / 2]) {
         for (const sz of [-D / 2, D / 2]) {
           addBox(sx, yMid, sz, 0.44, H - 0.18, 0.44, 'concrete', false, false);
         }
       }
-      // Concrete belt cornice beam between stories
       addBox(0, y0 + H, 0, W + 0.48, 0.16, D + 0.48, 'concrete', false, false);
     };
 
@@ -334,13 +361,14 @@ export class VillageBuilder {
       buildFloorWalls(f);
     }
 
-    // Interior ground partition (penetrable plaster & wood CQB cover)
+    // Interior ground partition (penetrable plaster CQB cover leaving clear corridor from breach to staircase)
     addBox(-0.6, 0.2 + H / 2, -1.6, 0.16, H, 2.6, 'plaster', true);
-    addBox(-0.6, 0.2 + H / 2, 2.1, 0.16, H, 1.8, 'wood', true);
+    addBox(-0.6, 0.26, -1.6, 0.20, 0.12, 2.6, 'trimDark', false, false);
 
     if (stories === 2) {
       // Floor 2 slab with clean stairwell cutout along rear wall
       const stairX = facing === 'E' ? -3.35 : 3.35;
+      const railOffset = facing === 'E' ? 0.85 : -0.85;
       const deckW = W - 2.6;
       const deckCx = facing === 'E' ? 1.2 : -1.2;
       addBox(deckCx, 0.2 + H, 0, deckW, 0.22, D, 'concrete', false, true);
@@ -351,8 +379,12 @@ export class VillageBuilder {
       addBox(balcX, 0.2 + H, 0, 1.35, 0.18, 4.4, 'concrete', false, true);
       addBox(balcX + (facing === 'E' ? 0.62 : -0.62), 0.2 + H + 0.5, 0, 0.12, 0.95, 4.4, 'brick', false, true);
 
-      // Internal stair flight from Ground (0.2) -> North Floor 2 Landing (0.2+H = 3.3)
-      this._addStaircase(buckets, cx, cz, stairX, stairX, D / 2 - 1.2, -1.2, 0.2, 0.2 + H, 10);
+      // Stairwell safety balustrade along inner Floor 2 stairwell opening (leaves North landing z < -1.1 wide open!)
+      addBox(stairX + railOffset, 0.2 + H + 0.5, 1.35, 0.10, 0.90, 4.9, 'wood', false, true);
+      buckets.wood.push(makeBoxGeo(0.08, 0.08, 5.1, stairX + railOffset, 0.2 + H * 0.5 + 0.9, 0.8, 0.67, 0, 0));
+
+      // Internal stair flight from Ground (0.2) -> North Floor 2 Landing top surface (0.2+H+0.10 = 3.40)
+      this._addStaircase(buckets, cx, cz, stairX, stairX, D / 2 - 1.2, -1.2, 0.2, 0.2 + H + 0.10, 10);
     }
 
     // Pitched European Slate Gable Roof (war-damaged sections + exposed timber rafters + brick chimney!)
@@ -403,8 +435,8 @@ export class VillageBuilder {
     g2.position.y = roofY * 0.5;
 
     lod.addLevel(g0, 0);
-    lod.addLevel(g1, 38);
-    lod.addLevel(g2, 74);
+    lod.addLevel(g1, 32);
+    lod.addLevel(g2, 64);
     this.scene.add(lod);
     this.lodObjects.push(lod);
 
@@ -583,8 +615,8 @@ export class VillageBuilder {
     g2.position.y = roofY * 0.5;
 
     lod.addLevel(g0, 0);
-    lod.addLevel(g1, 88);
-    lod.addLevel(g2, 118);
+    lod.addLevel(g1, 82);
+    lod.addLevel(g2, 108);
     this.scene.add(lod);
     this.lodObjects.push(lod);
 
@@ -646,6 +678,73 @@ export class VillageBuilder {
     }
   }
 
+  _placeInstancedGltf(gltf, placements, opts = {}) {
+    if (!gltf?.scene || !placements.length) return;
+    const {
+      physMat = 'concrete',
+      collide = false,
+      colorOverride = null,
+      castShadow = false,
+      receiveShadow = true,
+      colliderScale = 1.0,
+    } = opts;
+    gltf.scene.updateMatrixWorld(true);
+    const parts = [];
+    const totalBox = new THREE.Box3();
+    gltf.scene.traverse((obj) => {
+      if (!obj.isMesh || !obj.geometry) return;
+      const geo = ensureFloatAttributes(obj.geometry.clone());
+      geo.applyMatrix4(obj.matrixWorld);
+      geo.computeBoundingBox();
+      if (geo.boundingBox) totalBox.union(geo.boundingBox);
+      const srcMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+      const mat = new THREE.MeshLambertMaterial({
+        map: srcMat?.map || null,
+        color: colorOverride !== null ? colorOverride : (srcMat?.color ? srcMat.color.clone() : 0xffffff),
+      });
+      parts.push({ geo, mat });
+    });
+    if (!parts.length || totalBox.isEmpty()) return;
+
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    totalBox.getCenter(center);
+    totalBox.getSize(size);
+
+    for (const p of parts) {
+      p.geo.translate(-center.x, -totalBox.min.y, -center.z);
+    }
+
+    const dummy = new THREE.Object3D();
+    for (const part of parts) {
+      const inst = new THREE.InstancedMesh(part.geo, part.mat, placements.length);
+      inst.castShadow = castShadow;
+      inst.receiveShadow = receiveShadow;
+      inst.frustumCulled = false;
+      placements.forEach((pl, i) => {
+        dummy.position.set(pl.x, pl.y || 0, pl.z);
+        dummy.rotation.set(0, pl.ry || 0, 0);
+        dummy.scale.setScalar(pl.s || 1);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      this.scene.add(inst);
+    }
+
+    if (collide) {
+      placements.forEach((pl) => {
+        const sc = (pl.s || 1) * colliderScale;
+        this.physics.addStaticBox(
+          { x: pl.x, y: (pl.y || 0) + size.y * (pl.s || 1) * 0.5, z: pl.z },
+          { x: size.x * 0.5 * sc, y: size.y * 0.5 * (pl.s || 1), z: size.z * 0.5 * sc },
+          { x: 0, y: pl.ry || 0, z: 0 },
+          { material: physMat, kind: 'prop', penetrable: physMat === 'wood' }
+        );
+      });
+    }
+  }
+
   async _buildPropsAndWrecks() {
     const [
       pickupGltf,
@@ -696,6 +795,7 @@ export class VillageBuilder {
 
       if (dynamic) {
         const wrapper = new THREE.Group();
+        wrapper.position.set(pos.x, (pos.y || 0) + size.y * 0.5 + 0.04, pos.z);
         wrapper.add(clone);
         this.scene.add(wrapper);
         this.physics.addDynamicBox(
@@ -744,25 +844,26 @@ export class VillageBuilder {
     placeProp(carGltf, { x: -1.35, y: 0.03, z: -15.4 }, 0.92, 0.96, 'metal', { cullDist: 46, castShadow: false });
     placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 46, castShadow: false });
 
-    // Road Barriers (Jersey concrete blocks — castShadow false for big FPS boost on mobile!)
-    [
-      { x: 2.6, z: 25.0, ry: 0.16 },
-      { x: -3.3, z: 3.5, ry: -0.2 },
-      { x: 2.8, z: -13.5, ry: 0.1 },
-      { x: -3.2, z: -25.0, ry: 0.08 },
-      { x: 3.2, z: -25.0, ry: -0.1 },
-    ].forEach((b) => placeProp(barrierGltf, { x: b.x, y: 0.03, z: b.z }, b.ry, 0.95, 'concrete', { cullDist: 40, castShadow: false }));
+    // Road Barriers (batched into 1 InstancedMesh draw call + collided!)
+    this._placeInstancedGltf(
+      barrierGltf,
+      [
+        { x: 2.6, y: 0.03, z: 25.0, ry: 0.16, s: 0.95 },
+        { x: -3.3, y: 0.03, z: 3.5, ry: -0.2, s: 0.95 },
+        { x: 2.8, y: 0.03, z: -13.5, ry: 0.1, s: 0.95 },
+        { x: -3.2, y: 0.03, z: -25.0, ry: 0.08, s: 0.95 },
+        { x: 3.2, y: 0.03, z: -25.0, ry: -0.1, s: 0.95 },
+      ],
+      { physMat: 'concrete', collide: true }
+    );
 
-    // Street Lamps lining inner curb (x = +-4.55) with slim post-only collider so overhang never blocks movement
+    // Street Lamps lining inner curb (batched via InstancedMesh + slim post colliders)
+    const lampPlacements = [];
     for (const lz of [-18, -2, 14, 28]) {
       for (const side of [-1, 1]) {
         const lx = side * 4.55;
         const lzz = side === 1 ? lz - 4 : lz;
-        placeProp(lampGltf, { x: lx, y: 0.1, z: lzz }, side === -1 ? Math.PI / 2 : -Math.PI / 2, 1.0, 'metal', {
-          collide: false,
-          cullDist: 38,
-          castShadow: false,
-        });
+        lampPlacements.push({ x: lx, y: 0.1, z: lzz, ry: side === -1 ? Math.PI / 2 : -Math.PI / 2, s: 1.0 });
         this.physics.addStaticBox({ x: lx, y: 2.2, z: lzz }, { x: 0.16, y: 2.1, z: 0.16 }, null, {
           material: 'metal',
           kind: 'prop',
@@ -770,17 +871,24 @@ export class VillageBuilder {
         });
       }
     }
+    this._placeInstancedGltf(lampGltf, lampPlacements, { physMat: 'metal', collide: false });
 
     // Garage shutters mounted flush on solid piers of House 2 (South pier) & House 4 (North pier)
     placeProp(shutterGltf, { x: -15.1, y: 0.2, z: 4.02 }, 0, 0.85, 'metal', { collide: true, cullDist: 36 });
     placeProp(shutterGltf, { x: -15.3, y: 0.2, z: -20.02 }, Math.PI, 0.85, 'metal', { collide: true, cullDist: 36 });
 
-    // Tyre Barricades & Corner Clusters (spaced cleanly away from barriers & lamps, all collided)
-    [
-      { x: 3.65, z: 22.0 }, { x: 4.15, z: 21.3 }, { x: -4.2, z: 10.6 },
-      { x: 4.5, z: -12.6 }, { x: -4.6, z: -26.5 }, { x: 7.4, z: 5.5 },
-    ].forEach((p, idx) =>
-      placeProp(tyreGltf, { x: p.x, y: 0.03, z: p.z }, idx * 0.8, 1.0, 'dirt', { dynamic: false, collide: true, cullDist: 34, tiny: true })
+    // Tyre Barricades & Corner Clusters (1 InstancedMesh draw call + collided!)
+    this._placeInstancedGltf(
+      tyreGltf,
+      [
+        { x: 3.65, y: 0.03, z: 22.0, ry: 0.0, s: 1.0 },
+        { x: 4.15, y: 0.03, z: 21.3, ry: 0.8, s: 1.0 },
+        { x: -4.2, y: 0.03, z: 10.6, ry: 1.6, s: 1.0 },
+        { x: 4.5, y: 0.03, z: -12.6, ry: 2.4, s: 1.0 },
+        { x: -4.6, y: 0.03, z: -26.5, ry: 3.2, s: 1.0 },
+        { x: 7.4, y: 0.03, z: 5.5, ry: 4.0, s: 1.0 },
+      ],
+      { physMat: 'dirt', collide: true }
     );
 
     // Generators & Jerrycans
@@ -789,19 +897,20 @@ export class VillageBuilder {
     placeProp(jerryGltf, { x: -13.6, y: 0.2, z: 1.8 }, 0.6, 1.0, 'metal', { dynamic: true, mass: 10 });
     placeProp(jerryGltf, { x: -4.4, y: 0.2, z: -34.2 }, -0.4, 1.0, 'metal', { dynamic: true, mass: 10 });
 
-    // Interior Wooden Tables inside houses & tower
-    const tables = [
-      { x: -13.5, y: 0.2, z: 19.6, ry: 0.1 },
-      { x: 13.4, y: 0.2, z: 16.0, ry: -0.2 },
-      { x: 13.0, y: 3.3, z: -1.8, ry: 0.4 },
-      { x: -13.2, y: 3.3, z: 18.2, ry: -0.3 },
-      { x: -3.2, y: 0.2, z: -34.6, ry: 0.0 },
-      { x: -3.0, y: 6.4, z: -33.2, ry: 0.2 },
-      { x: -2.8, y: 12.6, z: -32.2, ry: -0.2 },
-    ];
-    tables.forEach((tc) => {
-      placeProp(tableGltf, { x: tc.x, y: tc.y, z: tc.z }, tc.ry, 1.0, 'wood', { cullDist: 26, tiny: true });
-    });
+    // Interior Wooden Tables inside houses & tower (1 InstancedMesh draw call + collided!)
+    this._placeInstancedGltf(
+      tableGltf,
+      [
+        { x: -13.5, y: 0.2, z: 19.6, ry: 0.1, s: 1.0 },
+        { x: 13.4, y: 0.2, z: 16.0, ry: -0.2, s: 1.0 },
+        { x: 13.0, y: 3.3, z: -1.8, ry: 0.4, s: 1.0 },
+        { x: -13.2, y: 3.3, z: 18.2, ry: -0.3, s: 1.0 },
+        { x: -3.2, y: 0.2, z: -34.6, ry: 0.0, s: 1.0 },
+        { x: -3.0, y: 6.4, z: -33.2, ry: 0.2, s: 1.0 },
+        { x: -2.8, y: 12.6, z: -32.2, ry: -0.2, s: 1.0 },
+      ],
+      { physMat: 'wood', collide: true }
+    );
 
     // Interactive Walkable Medkit Pickups (+35 HP each!) at tactical cover & building interiors
     const medCrossMat = new THREE.MeshBasicMaterial({ color: 0x62e874 });
@@ -819,7 +928,13 @@ export class VillageBuilder {
     medSpots.forEach((sp, idx) => {
       const grp = new THREE.Group();
       const mClone = medGltf.scene.clone(true);
-      mClone.scale.setScalar(1.15);
+      mClone.updateMatrixWorld(true);
+      const rawBx = new THREE.Box3().setFromObject(mClone);
+      const rawSz = new THREE.Vector3();
+      rawBx.getSize(rawSz);
+      const maxDim = Math.max(0.01, rawSz.x, rawSz.y, rawSz.z);
+      mClone.scale.setScalar(0.42 / maxDim);
+      mClone.updateMatrixWorld(true);
       const bx = new THREE.Box3().setFromObject(mClone);
       const bc = new THREE.Vector3();
       bx.getCenter(bc);
@@ -947,15 +1062,17 @@ export class VillageBuilder {
   }
 
   async _buildFoliageAndUtilityLines() {
-    const [tree1, tree2, bushGltf, grassGltf, rockGltf] = await Promise.all([
+    const [tree1, tree1Lod, tree2, tree2Lod, bushGltf, grassGltf, rockGltf] = await Promise.all([
       this.assets.loadModel('dead_tree1'),
+      this.assets.loadModel('dead_tree1_lod'),
       this.assets.loadModel('dead_tree2'),
+      this.assets.loadModel('dead_tree2_lod'),
       this.assets.loadModel('bush'),
       this.assets.loadModel('grass'),
       this.assets.loadModel('rock'),
     ]);
 
-    // Lush Green European Pine Forest lining village yards, street flanks & ridges
+    // Lush Green European Pine Forest lining village yards, street flanks & ridges (matched LOD0 + LOD1 silhouette!)
     const treeSpots = [
       { x: -19.8, z: 27.5, s: 1.05 }, { x: 19.8, z: 26.5, s: 1.12 },
       { x: -20.5, z: 12.2, s: 1.0 }, { x: 20.5, z: 11.4, s: 1.08 },
@@ -970,45 +1087,39 @@ export class VillageBuilder {
       { x: -28.5, z: -22.0, s: 1.38 }, { x: 28.5, z: -25.0, s: 1.30 },
       { x: -24.0, z: -48.5, s: 1.42 }, { x: 24.0, z: -48.5, s: 1.40 },
     ];
-    const pineLodMat = new THREE.MeshLambertMaterial({ color: 0x335e28 });
-    const c1 = new THREE.ConeGeometry(1.75, 2.6, 6);
-    c1.translate(0, 2.3, 0);
-    const c2 = new THREE.ConeGeometry(1.35, 2.5, 6);
-    c2.translate(0, 3.8, 0);
-    const c3 = new THREE.ConeGeometry(0.90, 2.1, 6);
-    c3.translate(0, 5.1, 0);
-    const pineCrownGeo = mergeGeometries([c1, c2, c3], false);
-    const pineTrunkGeo = new THREE.CylinderGeometry(0.2, 0.28, 1.4, 5);
-    pineTrunkGeo.translate(0, 0.7, 0);
-    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0x2f5626 });
-    const pineBarkMat = new THREE.MeshLambertMaterial({ color: 0x5c4637 });
-    treeSpots.forEach((sp, idx) => {
-      const src = idx % 2 === 0 ? tree1 : tree2;
-      const clone = src.scene.clone(true);
+    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0x365c2b });
+    const pineBarkMat = new THREE.MeshLambertMaterial({ color: 0x5d4534 });
+    const prepTreeClone = (srcScene) => {
+      const clone = srcScene.clone(true);
       clone.traverse((o) => {
-        if (o.isMesh) {
-          o.castShadow = false;
-          o.receiveShadow = true;
-          if (Array.isArray(o.material)) {
-            o.material = o.material.map((m) =>
-              m.name?.includes('Leaves')
-                ? new THREE.MeshLambertMaterial({ map: m.map || null, color: 0x3b6e30, alphaTest: 0.35, side: THREE.DoubleSide })
-                : new THREE.MeshLambertMaterial({ map: m.map || null, color: 0x6b5241 })
-            );
-          } else if (o.material) {
-            o.material = o.material.name?.includes('Leaves') ? pineLeafMat : pineBarkMat;
-          }
+        if (!o.isMesh) return;
+        o.castShadow = false;
+        o.receiveShadow = true;
+        if (Array.isArray(o.material)) {
+          o.material = o.material.map((m) =>
+            m?.name?.toLowerCase().includes('wood') ? pineBarkMat : pineLeafMat
+          );
+        } else if (o.material) {
+          o.material = o.material.name?.toLowerCase().includes('wood') ? pineBarkMat : pineLeafMat;
         }
       });
-      clone.scale.setScalar(sp.s);
+      return clone;
+    };
+
+    treeSpots.forEach((sp, idx) => {
+      const isType1 = idx % 2 === 0;
+      const hi = prepTreeClone((isType1 ? tree1 : tree2).scene);
+      const lo = prepTreeClone((isType1 ? tree1Lod : tree2Lod).scene);
+      // PineTree_1 base height = 2.69m, PineTree_2 = 3.55m -> scale cleanly to 6.5m-9.5m pines
+      const treeScale = sp.s * (isType1 ? 2.35 : 1.95);
+      hi.scale.setScalar(treeScale);
+      lo.scale.setScalar(treeScale);
+
       const lod = new THREE.LOD();
       lod.position.set(sp.x, 0, sp.z);
       lod.rotation.y = idx * 1.1;
-      const bb = new THREE.Group();
-      bb.add(new THREE.Mesh(pineCrownGeo, pineLodMat), new THREE.Mesh(pineTrunkGeo, pineBarkMat));
-      bb.scale.setScalar(sp.s);
-      lod.addLevel(clone, 0);
-      lod.addLevel(bb, 52);
+      lod.addLevel(hi, 0);
+      lod.addLevel(lo, 40);
       this.scene.add(lod);
       this.lodObjects.push(lod);
 
@@ -1021,7 +1132,7 @@ export class VillageBuilder {
       }
     });
 
-    // Dense Green Woodland Bushes in yards & flanking approaches
+    // Dense Green Woodland Bushes batched into 1 InstancedMesh draw call (no sphere blobs!)
     const bushSpots = [
       { x: -19.2, z: 31.2 }, { x: 19.2, z: 30.8 },
       { x: -19.0, z: 12.8 }, { x: 19.0, z: 11.4 },
@@ -1030,120 +1141,57 @@ export class VillageBuilder {
       { x: -16.8, z: 9.8 }, { x: 16.8, z: 9.8 },
       { x: -17.4, z: -10.4 }, { x: 17.4, z: -10.4 },
       { x: -9.8, z: -36.5 }, { x: 9.8, z: -36.5 },
-    ];
-    bushSpots.forEach((sp, i) => {
-      const clone = bushGltf.scene.clone(true);
-      clone.traverse((o) => {
-        if (o.isMesh && o.material) {
-          o.castShadow = false;
-          o.receiveShadow = true;
-          const tex = o.material.map || null;
-          o.material = new THREE.MeshLambertMaterial({
-            map: tex,
-            color: 0x3b632d,
-            alphaTest: 0.35,
-            side: THREE.DoubleSide,
-          });
-        }
-      });
-      clone.scale.setScalar(0.95 + (i % 3) * 0.16);
-      const lod = new THREE.LOD();
-      lod.position.set(sp.x, 0, sp.z);
-      lod.rotation.y = i * 0.9;
-      lod.addLevel(clone, 0);
-      lod.addLevel(new THREE.Group(), 24);
-      this.scene.add(lod);
-      this.lodObjects.push(lod);
-
-      this.physics.addStaticBox({ x: sp.x, y: 0.7, z: sp.z }, { x: 0.50, y: 0.7, z: 0.50 }, null, {
-        material: 'wood',
-        kind: 'prop',
-        penetrable: true,
-      });
+    ].map((sp, i) => ({ x: sp.x, y: 0, z: sp.z, ry: i * 0.9, s: 0.92 + (i % 3) * 0.14 }));
+    this._placeInstancedGltf(bushGltf, bushSpots, {
+      physMat: 'wood',
+      collide: true,
+      colliderScale: 0.65,
+      colorOverride: 0x3b632d,
     });
 
     // InstancedMesh Woodland Grass Tufts across unpaved yards & roadsides (1 draw call!)
-    let grassMeshSrc = null;
-    grassGltf.scene.traverse((o) => {
-      if (o.isMesh && !grassMeshSrc) grassMeshSrc = o;
-    });
-    if (grassMeshSrc) {
-      const grassGeo = grassMeshSrc.geometry.clone();
-      grassGeo.scale(grassMeshSrc.scale.x || 0.3, grassMeshSrc.scale.y || 0.3, grassMeshSrc.scale.z || 0.3);
-      const grassMat = new THREE.MeshLambertMaterial({
-        map: grassMeshSrc.material?.map || null,
-        color: 0x456b32,
-      });
-      const bRects = [
-        { minX: -17.5, maxX: -7.0, minZ: 14.0, maxZ: 23.0 },
-        { minX: 7.0, maxX: 17.4, minZ: 13.0, maxZ: 22.0 },
-        { minX: -17.5, maxX: -7.0, minZ: -4.2, maxZ: 4.2 },
-        { minX: 7.0, maxX: 17.4, minZ: -6.0, maxZ: 3.0 },
-        { minX: -17.5, maxX: -7.5, minZ: -20.2, maxZ: -11.8 },
-        { minX: 7.5, maxX: 17.5, minZ: -21.0, maxZ: -12.0 },
-        { minX: -8.2, maxX: 8.2, minZ: -38.8, maxZ: -27.8 },
-      ];
-      const grassSpots = [];
-      for (let i = 0; i < 360 && grassSpots.length < 96; i++) {
-        const side = i % 2 === 0 ? -1 : 1;
-        const x = side * (6.2 + ((i * 29) % 172) * 0.1);
-        const z = -37 + ((i * 41) % 72);
-        if (z > 4.4 && z < 10.8) continue;
-        let inside = false;
-        for (const r of bRects) {
-          if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) { inside = true; break; }
-        }
-        if (!inside) grassSpots.push({ x, z, idx: i });
+    const bRects = [
+      { minX: -17.5, maxX: -7.0, minZ: 14.0, maxZ: 23.0 },
+      { minX: 7.0, maxX: 17.4, minZ: 13.0, maxZ: 22.0 },
+      { minX: -17.5, maxX: -7.0, minZ: -4.2, maxZ: 4.2 },
+      { minX: 7.0, maxX: 17.4, minZ: -6.0, maxZ: 3.0 },
+      { minX: -17.5, maxX: -7.5, minZ: -20.2, maxZ: -11.8 },
+      { minX: 7.5, maxX: 17.5, minZ: -21.0, maxZ: -12.0 },
+      { minX: -8.2, maxX: 8.2, minZ: -38.8, maxZ: -27.8 },
+    ];
+    const grassPlacements = [];
+    for (let i = 0; i < 360 && grassPlacements.length < 96; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const x = side * (6.2 + ((i * 29) % 172) * 0.1);
+      const z = -37 + ((i * 41) % 72);
+      if (z > 4.4 && z < 10.8) continue;
+      let inside = false;
+      for (const r of bRects) {
+        if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) { inside = true; break; }
       }
-      const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, grassSpots.length);
-      grassInst.receiveShadow = true;
-      const gd = new THREE.Object3D();
-      grassSpots.forEach((g, i) => {
-        gd.position.set(g.x, 0.0, g.z);
-        gd.rotation.set(0, g.idx * 1.37, 0);
-        const gs = 0.85 + (g.idx % 4) * 0.20;
-        gd.scale.set(gs, gs, gs);
-        gd.updateMatrix();
-        grassInst.setMatrixAt(i, gd.matrix);
-      });
-      grassInst.instanceMatrix.needsUpdate = true;
-      this.scene.add(grassInst);
+      if (!inside) {
+        grassPlacements.push({ x, y: 0, z, ry: i * 1.37, s: 0.72 + (i % 4) * 0.15 });
+      }
     }
+    this._placeInstancedGltf(grassGltf, grassPlacements, {
+      collide: false,
+      colorOverride: 0x456b32,
+    });
 
     // Woodland Mossy Granite Boulders batched into 1 InstancedMesh draw call (collided)
-    const rockSpots = [
+    const rockPlacements = [
       { x: -18.5, z: 23.8, s: 1.1 }, { x: 18.2, z: 22.8, s: 1.0 },
       { x: -18.8, z: 4.0, s: 1.25 }, { x: 18.6, z: -4.2, s: 1.15 },
       { x: -7.8, z: -29.0, s: 0.95 }, { x: 8.4, z: -29.2, s: 1.05 },
       { x: -20.2, z: -18.5, s: 1.2 }, { x: 20.2, z: -19.5, s: 1.15 },
       { x: -15.5, z: 33.0, s: 1.05 }, { x: 15.8, z: 32.5, s: 1.1 },
-    ];
-    let rockSrc = null;
-    rockGltf.scene.traverse((o) => {
-      if (o.isMesh && !rockSrc) rockSrc = o;
+    ].map((sp, i) => ({ x: sp.x, y: 0, z: sp.z, ry: i * 1.2, s: sp.s }));
+    this._placeInstancedGltf(rockGltf, rockPlacements, {
+      physMat: 'concrete',
+      collide: true,
+      colliderScale: 0.85,
+      colorOverride: 0x7b8078,
     });
-    if (rockSrc) {
-      const rockGeo = rockSrc.geometry.clone();
-      rockGeo.scale(rockSrc.scale.x || 0.5, rockSrc.scale.y || 0.5, rockSrc.scale.z || 0.5);
-      const rockMat = new THREE.MeshLambertMaterial({ map: rockSrc.material?.map || null, color: 0x7b8078 });
-      const rockInst = new THREE.InstancedMesh(rockGeo, rockMat, rockSpots.length);
-      rockInst.receiveShadow = true;
-      const rd = new THREE.Object3D();
-      rockSpots.forEach((sp, i) => {
-        rd.position.set(sp.x, 0, sp.z);
-        rd.rotation.set(0, i * 1.2, 0);
-        rd.scale.setScalar(sp.s);
-        rd.updateMatrix();
-        rockInst.setMatrixAt(i, rd.matrix);
-        this.physics.addStaticBox({ x: sp.x, y: 0.45 * sp.s, z: sp.z }, { x: 0.55 * sp.s, y: 0.45 * sp.s, z: 0.55 * sp.s }, null, {
-          material: 'concrete',
-          kind: 'prop',
-          penetrable: false,
-        });
-      });
-      rockInst.instanceMatrix.needsUpdate = true;
-      this.scene.add(rockInst);
-    }
 
     // Timber Telegraph Poles + Overhead Wires placed cleanly outside sidewalks (x = +-6.95, collided)
     const poleGeos = [];

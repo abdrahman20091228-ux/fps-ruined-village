@@ -1,23 +1,23 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-14T08:02:55.290Z",
-  "totalBytes": 5127864,
-  "fileCount": 66,
+  "generatedAt": "2026-11-14T12:51:12.224Z",
+  "totalBytes": 5294569,
+  "fileCount": 73,
   "categories": {
-    "code": 227076,
-    "models": 3250772,
+    "code": 254601,
+    "models": 3390120,
     "textures": 1492322,
-    "audio": 157694
+    "audio": 157526
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 25039,
+      "size": 27652,
       "category": "code"
     },
     {
       "path": "src/audio/audioSystem.js",
-      "size": 13989,
+      "size": 13851,
       "category": "code"
     },
     {
@@ -27,12 +27,12 @@
     },
     {
       "path": "src/core/config.js",
-      "size": 2362,
+      "size": 1939,
       "category": "code"
     },
     {
       "path": "src/core/engine.js",
-      "size": 9385,
+      "size": 10910,
       "category": "code"
     },
     {
@@ -42,32 +42,32 @@
     },
     {
       "path": "src/fx/effects.js",
-      "size": 7753,
+      "size": 7755,
       "category": "code"
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 22253,
+      "size": 29817,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 27982,
+      "size": 32165,
       "category": "code"
     },
     {
       "path": "src/player/controller.js",
-      "size": 5931,
+      "size": 7006,
       "category": "code"
     },
     {
       "path": "src/styles.css",
-      "size": 20706,
+      "size": 24498,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 19322,
+      "size": 24466,
       "category": "code"
     },
     {
@@ -77,12 +77,17 @@
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 57026,
+      "size": 59214,
       "category": "code"
     },
     {
       "path": "assets/audio/akm_fire.ogg",
-      "size": 10027,
+      "size": 8285,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/bullet_whiz.ogg",
+      "size": 5954,
       "category": "audio"
     },
     {
@@ -111,13 +116,28 @@
       "category": "audio"
     },
     {
+      "path": "assets/audio/jump.ogg",
+      "size": 6788,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/land.ogg",
+      "size": 4229,
+      "category": "audio"
+    },
+    {
       "path": "assets/audio/m4_fire.ogg",
-      "size": 8800,
+      "size": 7996,
       "category": "audio"
     },
     {
       "path": "assets/audio/pistol_fire.ogg",
-      "size": 6264,
+      "size": 8068,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/player_hurt.ogg",
+      "size": 5722,
       "category": "audio"
     },
     {
@@ -127,27 +147,32 @@
     },
     {
       "path": "assets/audio/step_sand1.ogg",
-      "size": 3836,
+      "size": 7758,
       "category": "audio"
     },
     {
       "path": "assets/audio/step_sand2.ogg",
-      "size": 3653,
+      "size": 7327,
       "category": "audio"
     },
     {
       "path": "assets/audio/step_stone1.ogg",
-      "size": 3037,
+      "size": 6933,
       "category": "audio"
     },
     {
       "path": "assets/audio/step_stone2.ogg",
-      "size": 3092,
+      "size": 6841,
+      "category": "audio"
+    },
+    {
+      "path": "assets/audio/weapon_switch.ogg",
+      "size": 7451,
       "category": "audio"
     },
     {
       "path": "assets/audio/wind_ambience.ogg",
-      "size": 77953,
+      "size": 33142,
       "category": "audio"
     },
     {
@@ -167,17 +192,27 @@
     },
     {
       "path": "assets/models/bush.glb",
-      "size": 30048,
+      "size": 15512,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/dead_tree1_lod.glb",
+      "size": 12760,
       "category": "models"
     },
     {
       "path": "assets/models/dead_tree1.glb",
-      "size": 67024,
+      "size": 53804,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/dead_tree2_lod.glb",
+      "size": 11392,
       "category": "models"
     },
     {
       "path": "assets/models/dead_tree2.glb",
-      "size": 74848,
+      "size": 47544,
       "category": "models"
     },
     {
@@ -207,7 +242,7 @@
     },
     {
       "path": "assets/models/grass.glb",
-      "size": 13748,
+      "size": 3268,
       "category": "models"
     },
     {
@@ -222,7 +257,7 @@
     },
     {
       "path": "assets/models/m4.glb",
-      "size": 127512,
+      "size": 389128,
       "category": "models"
     },
     {
@@ -272,17 +307,17 @@
     },
     {
       "path": "assets/models/world_akm.glb",
-      "size": 76052,
+      "size": 63460,
       "category": "models"
     },
     {
       "path": "assets/models/world_m4.glb",
-      "size": 127512,
+      "size": 64980,
       "category": "models"
     },
     {
       "path": "assets/models/world_pistol.glb",
-      "size": 28380,
+      "size": 22624,
       "category": "models"
     },
     {

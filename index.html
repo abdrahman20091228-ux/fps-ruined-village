@@ -46,7 +46,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="screen-overlay">
     <div class="loading-panel">
-      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V5</div>
+      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V6</div>
       <h1 class="game-title">ASHES OF VALE</h1>
       <p class="subtitle">WOODLAND VILLAGE &amp; MULTI-STORY ASSAULT</p>
 
@@ -78,10 +78,10 @@
   <div id="main-menu" class="screen-overlay hidden">
     <div class="menu-shell">
       <div class="menu-left">
-        <div class="mission-tag">OPERATION: ASHEN THRESHOLD // SINGLE PLAYER</div>
+        <div class="mission-tag">OPERATION: ASHEN THRESHOLD // TACTICAL V6</div>
         <h1 class="menu-title">ASHES OF VALE</h1>
         <p class="menu-brief">
-          Push up the cobblestone street through the pine-lined village, breach 2-story homes, and clear all 5 floors of the ruined apartment tower. Track compass contacts &amp; collect Medkits or Ammo Crates.
+          Push up the cobblestone street through the pine-lined village, climb staircases to clear 2-story homes, and assault all 5 floors of the ruined apartment tower. Track contacts on the Threat Radar &amp; collect Medkits or Ammo Crates.
         </p>
 
         <div class="menu-section">
@@ -128,9 +128,9 @@
           <ul class="intel-list">
             <li><span>OBJECTIVE</span><strong>Eliminate All 12 Hostiles</strong></li>
             <li><span>VERTICALITY</span><strong>2-Story Homes &amp; 5-Story Tower</strong></li>
-            <li><span>SUPPLY</span><strong>Green Medkits &amp; Ammo Crates</strong></li>
+            <li><span>MOVEMENT</span><strong>PUBG Joystick + Sprint Lock</strong></li>
             <li><span>ARSENAL</span><strong>M4 Holo • AKM • M9 Tactical</strong></li>
-            <li><span>AIMING</span><strong>Hold/Drag ADS or Fire + Gyro</strong></li>
+            <li><span>TRIGGER</span><strong>Fire Button + ADS Drag + Gyro</strong></li>
           </ul>
           <div id="menu-cache-badge" class="cache-badge">Cache verified</div>
         </div>
@@ -150,19 +150,19 @@
       <div class="modal-body loadout-grid">
         <div class="weapon-spec">
           <h3>M4 CARBINE (HOLO OPTIC)</h3>
-          <p>High cyclic fire rate, holographic reflex optic for clean ADS tracking, 30-round mag, fast reload.</p>
+          <p>High cyclic fire rate, elevated holographic reflex optic for clean ADS target acquisition, 30-round mag.</p>
         </div>
         <div class="weapon-spec">
           <h3>AKM (7.62×39mm)</h3>
-          <p>High stopping power, heavy upward kick, detachable mag, punches through wood &amp; plaster.</p>
+          <p>Punchy single-shot cadence &amp; full-auto stopping power, heavy kick, crisp iron sights, wall penetration.</p>
         </div>
         <div class="weapon-spec">
           <h3>M9 TACTICAL PISTOL</h3>
-          <p>Crisp 3-dot tritium sights, fast draw &amp; ADS agility, 15-round mag.</p>
+          <p>Crisp 3-dot luminous tritium sights, fast draw &amp; ADS agility, 15-round mag.</p>
         </div>
         <div class="weapon-spec">
-          <h3>MOBILE CONTROLS &amp; HUD</h3>
-          <p>Hold ADS &amp; drag thumb to aim while scoped, or drag while holding Fire! Customize every button in Settings.</p>
+          <h3>PUBG SPRINT &amp; CLEAN FIRE</h3>
+          <p>Push left stick forward to sprint, or slide to the top latch to lock Sprint! Fire button strictly shoots with zero aim drift; drag screen or ADS to track targets alongside smooth MEMS Gyro.</p>
         </div>
       </div>
     </div>
@@ -187,7 +187,7 @@
           <input id="set-gyro-sens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" />
         </label>
         <label class="setting-row setting-toggle">
-          <span>Gyroscope Aiming (Motion)</span>
+          <span>Gyroscope Aiming (Smooth MEMS)</span>
           <input id="set-gyro-enabled" type="checkbox" checked />
         </label>
         <label class="setting-row setting-toggle">
@@ -195,15 +195,15 @@
           <input id="set-ads-hold" type="checkbox" checked />
         </label>
         <label class="setting-row">
-          <span>Resolution Scale <strong id="val-res-scale">0.75</strong></span>
-          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.75" />
+          <span>Resolution Scale <strong id="val-res-scale">0.80</strong></span>
+          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.8" />
         </label>
         <label class="setting-row">
           <span>Graphics Quality</span>
           <select id="set-quality">
-            <option value="low">Low (Max FPS / 180k tris)</option>
-            <option value="medium" selected>Medium (Balanced / 280k tris)</option>
-            <option value="high">High (Sharp Shadows / 400k tris)</option>
+            <option value="low">Low (Max 60 FPS / 105k tris)</option>
+            <option value="medium" selected>Medium (Balanced / 155k tris)</option>
+            <option value="high">High (Crisp Shadows / 225k tris)</option>
           </select>
         </label>
         <label class="setting-row">
@@ -216,8 +216,8 @@
           </select>
         </label>
         <label class="setting-row">
-          <span>Master Volume <strong id="val-volume">80%</strong></span>
-          <input id="set-volume" type="range" min="0" max="1" step="0.05" value="0.8" />
+          <span>Master Volume <strong id="val-volume">85%</strong></span>
+          <input id="set-volume" type="range" min="0" max="1" step="0.05" value="0.85" />
         </label>
         <label class="setting-row">
           <span>Default Button Scale <strong id="val-btn-size">1.00x</strong></span>
@@ -283,13 +283,18 @@
     </div>
   </div>
 
-  <!-- In-Game HUD -->
+  <!-- In-Game Modern Tactical HUD -->
   <div id="hud" class="hidden">
+    <!-- Top-Left: Mini Threat Radar + Compact Telemetry -->
+    <div id="radar-shell">
+      <canvas id="tactical-radar" width="84" height="84"></canvas>
+    </div>
     <div id="top-telemetry">
       <div id="fps-counter">FPS: -- | Hz: --</div>
-      <div id="debug-tris">TRIS: 0 / 500k</div>
+      <div id="debug-tris">TRIS: 0 | CALLS: 0</div>
     </div>
 
+    <!-- Top-Center: Compact Compass + Threat Rail -->
     <div id="compass-wrapper">
       <div id="compass-bar">
         <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><polygon points="8,1 11,9 8,7.5 5,9" fill="#c99b42"/></svg>
@@ -300,6 +305,7 @@
       <div id="compass-threats"></div>
     </div>
 
+    <!-- Top-Right: Hostiles Counter + Pause -->
     <div id="objective-box">
       <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="#c99b42" stroke-width="1.5"/><circle cx="8" cy="8" r="1.5" fill="#c99b42"/></svg>
       <span class="obj-label">HOSTILES</span>
@@ -313,17 +319,17 @@
     <div id="mission-banner" class="hidden">ELIMINATE 12 HOSTILES — CLEAR HOUSES &amp; 5-STORY TOWER</div>
     <div id="medkit-toast" class="hidden">+35 HP // MEDKIT</div>
 
-    <!-- Center Crosshair & Hit Marker -->
+    <!-- Dynamic Center Crosshair & Hit Marker -->
     <div id="crosshair">
       <div class="ch-line ch-top"></div>
       <div class="ch-line ch-bottom"></div>
       <div class="ch-line ch-left"></div>
       <div class="ch-line ch-right"></div>
+      <div class="ch-dot"></div>
       <div id="hit-marker" class="hidden"></div>
     </div>
 
     <div id="damage-vignette"></div>
-    <!-- Pooled Dynamic Directional Damage Chevrons -->
     <div id="damage-indicators">
       <div class="dmg-arc hidden"><svg viewBox="0 0 36 22" fill="none"><path d="M4 18 L18 4 L32 18 L26 18 L18 10 L10 18 Z" fill="#ff3b30"/></svg></div>
       <div class="dmg-arc hidden"><svg viewBox="0 0 36 22" fill="none"><path d="M4 18 L18 4 L32 18 L26 18 L18 10 L10 18 Z" fill="#ff3b30"/></svg></div>
@@ -332,22 +338,32 @@
 
     <div id="interact-prompt" class="hidden">DOOR // OPEN OR CLOSE</div>
 
-    <!-- Bottom Status -->
-    <div id="hud-bottom-left">
-      <div class="hp-label">HP <span id="hp-value">100</span></div>
-      <div class="hp-bar-track"><div id="hp-bar-fill" style="width: 100%"></div></div>
-    </div>
-
-    <div id="hud-bottom-right">
-      <div id="weapon-name">M4 HOLO</div>
-      <div id="ammo-display"><span id="ammo-mag">30</span> / <span id="ammo-reserve">150</span></div>
+    <!-- Bottom-Center Combat Dock: Slim HP Bar + Tappable Weapon/Ammo Switcher Card -->
+    <div id="hud-bottom-dock">
+      <div id="hud-hp-card">
+        <div class="hp-row"><span>HP</span><strong id="hp-value">100</strong></div>
+        <div class="hp-bar-track"><div id="hp-bar-fill" style="width: 100%"></div></div>
+      </div>
+      <button id="btn-weapon" class="hud-weapon-card" aria-label="Switch Weapon">
+        <div class="weapon-card-top">
+          <svg class="t-svg-wide" viewBox="0 0 36 20" fill="none">
+            <path d="M3 9h21l3 2h5v2.2h-6l-2-1.2H16l-1.5 3.2h-2.8L12.2 12.6H6L4 15V9z" stroke="#f0ede6" stroke-width="1.5" stroke-linejoin="round"/>
+            <path d="M13 9V6.5h6V9" stroke="#c99b42" stroke-width="1.5"/>
+          </svg>
+          <span id="weapon-name">M4 HOLO</span>
+        </div>
+        <div id="ammo-display"><span id="ammo-mag">30</span> <small>/ <span id="ammo-reserve">150</span></small></div>
+      </button>
     </div>
   </div>
 
-  <!-- Mobile Touch Controls (Hold ADS + Thumb-Drag Look + Custom Layout Support) -->
+  <!-- Mobile Touch Controls (PUBG Sprint Joystick + Fire-Only Trigger + ADS Drag) -->
   <div id="touch-controls" class="hidden">
     <div id="joystick-zone">
       <div id="joystick-base">
+        <div id="joy-sprint-latch" class="hidden" title="Sprint Lock">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M7 16l5-5 5 5M7 11l5-5 5 5" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
         <div id="joystick-knob"></div>
       </div>
     </div>
@@ -393,21 +409,6 @@
           <rect x="6" y="3" width="11" height="18" rx="1" stroke="#c99b42" stroke-width="1.8"/>
           <circle cx="14" cy="12" r="1.4" fill="#f0ede6"/>
           <path d="M19 9l2.5 3-2.5 3" stroke="#f0ede6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-      </button>
-    </div>
-
-    <div id="touch-buttons-left">
-      <button id="btn-sprint" class="t-btn t-btn-sm" aria-label="Sprint">
-        <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
-          <path d="M7 17l5-5-5-5M13 17l5-5-5-5" stroke="#c99b42" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <span class="t-tag">RUN</span>
-      </button>
-      <button id="btn-weapon" class="t-btn t-btn-wide" aria-label="Switch Weapon">
-        <svg class="t-svg-wide" viewBox="0 0 36 20" fill="none">
-          <path d="M4 9h20l3 2.5h5v2.5h-6l-2-1.5H16l-1.5 3.5h-3L12 13H6l-2 2.5V9z" stroke="#f0ede6" stroke-width="1.6" stroke-linejoin="round"/>
-          <path d="M13 9V6.5h6V9" stroke="#c99b42" stroke-width="1.6"/>
         </svg>
       </button>
     </div>

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { loadSettings, saveSettings, MAX_TRIANGLES } from './core/config.js';
+import { loadSettings, saveSettings, MAX_TRIANGLES, QUALITY_PRESETS } from './core/config.js';
 import { GameEngine } from './core/engine.js';
 import { PhysicsWorld } from './core/physics.js';
 import { AssetLoader } from './core/assetLoader.js';
@@ -45,6 +45,11 @@ const AUDIO_CLIPS = {
   m4_fire: './assets/audio/m4_fire.ogg',
   reload: './assets/audio/reload.ogg',
   empty_click: './assets/audio/empty_click.ogg',
+  weapon_switch: './assets/audio/weapon_switch.ogg',
+  bullet_whiz: './assets/audio/bullet_whiz.ogg',
+  jump: './assets/audio/jump.ogg',
+  land: './assets/audio/land.ogg',
+  player_hurt: './assets/audio/player_hurt.ogg',
   step_sand1: './assets/audio/step_sand1.ogg',
   step_sand2: './assets/audio/step_sand2.ogg',
   step_stone1: './assets/audio/step_stone1.ogg',
@@ -85,6 +90,7 @@ function onPlayerDamaged(amount, sourcePos) {
   if (gameState !== 'playing') return;
   player.health = Math.max(0, player.health - amount);
   damageFlashTimer = 0.35;
+  audio.playPlayerHurt();
 
   if (sourcePos) {
     const src = new THREE.Vector3(sourcePos.x, sourcePos.y || 0, sourcePos.z);
@@ -178,6 +184,95 @@ function updateCompassThreats() {
   for (let i = used; i < 12; i++) {
     rail.children[i].classList.add('hidden');
   }
+}
+
+const radarCanvas = document.getElementById('tactical-radar');
+const radarCtx = radarCanvas ? radarCanvas.getContext('2d') : null;
+
+function drawTacticalRadar() {
+  if (!radarCtx || !radarCanvas) return;
+  const w = radarCanvas.width;
+  const h = radarCanvas.height;
+  const cx = w * 0.5;
+  const cy = h * 0.5;
+  radarCtx.clearRect(0, 0, w, h);
+
+  // Subtle range rings (17m, 34m) & crosshairs
+  radarCtx.strokeStyle = 'rgba(201, 155, 66, 0.20)';
+  radarCtx.lineWidth = 1;
+  radarCtx.beginPath();
+  radarCtx.arc(cx, cy, 18, 0, Math.PI * 2);
+  radarCtx.arc(cx, cy, 35, 0, Math.PI * 2);
+  radarCtx.stroke();
+
+  radarCtx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  radarCtx.beginPath();
+  radarCtx.moveTo(cx, 5);
+  radarCtx.lineTo(cx, h - 5);
+  radarCtx.moveTo(5, cy);
+  radarCtx.lineTo(w - 5, cy);
+  radarCtx.stroke();
+
+  // Player forward FOV wedge (always pointing UP on radar)
+  radarCtx.fillStyle = 'rgba(201, 155, 66, 0.16)';
+  radarCtx.beginPath();
+  radarCtx.moveTo(cx, cy);
+  radarCtx.arc(cx, cy, 35, -Math.PI * 0.5 - 0.52, -Math.PI * 0.5 + 0.52);
+  radarCtx.closePath();
+  radarCtx.fill();
+
+  const fwdX = -Math.sin(player.yaw);
+  const fwdZ = -Math.cos(player.yaw);
+  const rightX = Math.cos(player.yaw);
+  const rightZ = -Math.sin(player.yaw);
+  const contacts = enemySys.getThreatContacts();
+  const maxMeters = 36;
+  const maxRadiusPx = 36;
+  const playerFootY = player.currPos.y - player.standHeight * 0.5;
+
+  for (const c of contacts) {
+    const dx = c.pos.x - player.currPos.x;
+    const dz = c.pos.z - player.currPos.z;
+    const fwdDot = dx * fwdX + dz * fwdZ;
+    const rightDot = dx * rightX + dz * rightZ;
+    const distM = Math.hypot(fwdDot, rightDot);
+    const scale = Math.min(maxRadiusPx, (distM / maxMeters) * maxRadiusPx) / Math.max(0.001, distM);
+    const bx = cx + rightDot * scale;
+    const by = cy - fwdDot * scale;
+    const clamped = distM > maxMeters;
+
+    radarCtx.globalAlpha = clamped ? 0.62 : 0.96;
+    radarCtx.fillStyle = c.isHostileActive ? '#ff4a40' : '#c99b42';
+    const dy = c.pos.y - playerFootY;
+    if (Math.abs(dy) > 2.2) {
+      radarCtx.beginPath();
+      if (dy > 0) {
+        radarCtx.moveTo(bx, by - 3.6);
+        radarCtx.lineTo(bx - 3.2, by + 2.6);
+        radarCtx.lineTo(bx + 3.2, by + 2.6);
+      } else {
+        radarCtx.moveTo(bx, by + 3.6);
+        radarCtx.lineTo(bx - 3.2, by - 2.6);
+        radarCtx.lineTo(bx + 3.2, by - 2.6);
+      }
+      radarCtx.closePath();
+      radarCtx.fill();
+    } else {
+      radarCtx.beginPath();
+      radarCtx.arc(bx, by, c.isHostileActive ? 3.1 : 2.4, 0, Math.PI * 2);
+      radarCtx.fill();
+    }
+  }
+  radarCtx.globalAlpha = 1;
+
+  // Player center chevron
+  radarCtx.fillStyle = '#f5d48a';
+  radarCtx.beginPath();
+  radarCtx.moveTo(cx, cy - 4);
+  radarCtx.lineTo(cx - 3, cy + 3);
+  radarCtx.lineTo(cx + 3, cy + 3);
+  radarCtx.closePath();
+  radarCtx.fill();
 }
 
 function finishMission(victory) {
@@ -535,11 +630,15 @@ async function boot() {
       input.pollKeyboardMovement();
       const cmd = input.consumePulses();
 
-      player.step(dt, cmd, (feetPos) => {
-        const key = audio.isIndoors
-          ? (Math.random() < 0.5 ? 'step_stone1' : 'step_stone2')
-          : (Math.random() < 0.5 ? 'step_sand1' : 'step_sand2');
-        audio.playClip(key, feetPos, 0.42, 0.08);
+      player.step(dt, cmd, {
+        onFootstep: (feetPos, sprinting) => {
+          const key = audio.isIndoors
+            ? (Math.random() < 0.5 ? 'step_stone1' : 'step_stone2')
+            : (Math.random() < 0.5 ? 'step_sand1' : 'step_sand2');
+          audio.playClip(key, feetPos, sprinting ? 0.50 : 0.38, 0.09);
+        },
+        onJump: () => audio.playJump(),
+        onLand: (_pos, fallSpeed) => audio.playLand(fallSpeed),
       });
 
       const healed = village ? village.updateMedkits(dt, player.getFeetPosition(), player) : 0;
@@ -560,6 +659,7 @@ async function boot() {
       }
 
       const prevMag = weapons.activeAmmo.mag;
+      const prevWeaponId = weapons.activeDef.id;
       weapons.update(
         dt,
         cmd,
@@ -573,6 +673,9 @@ async function boot() {
         },
         showHitMarker
       );
+      if (weapons.activeDef.id !== prevWeaponId) {
+        audio.playWeaponSwitch();
+      }
       if (weapons.activeAmmo.mag < prevMag) {
         enemySys.notifyGunfire(player.getFeetPosition(), audio.isIndoors);
       }
@@ -649,15 +752,26 @@ async function boot() {
 
         updateDynamicDamageIndicators(renderDt);
         updateCompassThreats();
+        drawTacticalRadar();
 
         const fwd = player.getAimDirection();
         audio.updateListener(engine.camera.position, fwd, new THREE.Vector3(0, 1, 0));
+
+        // Dynamic Crosshair (expands gently on sprint/recoil, fades during ADS for clean reticle view)
+        const crosshairEl = document.getElementById('crosshair');
+        if (crosshairEl) {
+          const moveMag = Math.min(1, Math.hypot(input.state.moveX, input.state.moveY));
+          const chScale = 1 + moveMag * (player.isSprinting ? 0.55 : 0.24) + Math.min(0.65, Math.abs(weapons.recoilPitch) * 10);
+          crosshairEl.style.opacity = String(Math.max(0.06, 1 - weapons.adsBlend * 0.94).toFixed(2));
+          crosshairEl.style.transform = `translate(-50%, -50%) scale(${chScale.toFixed(2)})`;
+        }
 
         // Telemetry & Debug
         document.getElementById('fps-counter').textContent = `FPS: ${engine.fps} | Hz: ${engine.detectedHz}`;
         const debugEl = document.getElementById('debug-tris');
         debugEl.classList.toggle('hidden', !settings.showDebug);
-        debugEl.textContent = `TRIS: ${engine.triangles.toLocaleString()} / ${(MAX_TRIANGLES / 1000).toFixed(0)}k | CALLS: ${engine.drawCalls}`;
+        const triCapK = ((QUALITY_PRESETS[settings.quality]?.triTarget || MAX_TRIANGLES) / 1000).toFixed(0);
+        debugEl.textContent = `TRIS: ${(engine.triangles / 1000).toFixed(1)}k/${triCapK}k | CALLS: ${engine.drawCalls}`;
 
         // Compass & Zone
         const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);

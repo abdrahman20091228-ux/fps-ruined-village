@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-const CACHE_NAME = 'ashes-of-vale-assets-v5';
+const CACHE_NAME = 'ashes-of-vale-assets-v6';
 
 export class AssetLoader {
   constructor() {

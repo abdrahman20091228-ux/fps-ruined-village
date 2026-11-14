@@ -45,11 +45,11 @@ export class EffectsSystem {
     // Subtle realistic ballistic bullet glints (ultra-thin fast streak, no cartoon lasers)
     this.tracers = [];
     this._tracerIndex = 0;
-    const tracerGeo = new THREE.CylinderGeometry(0.0011, 0.0022, 1, 4, 1, true);
+    const tracerGeo = new THREE.CylinderGeometry(0.0010, 0.0018, 1, 4, 1, true);
     tracerGeo.rotateX(Math.PI / 2);
     for (let i = 0; i < MAX_TRACERS; i++) {
       const mat = new THREE.MeshBasicMaterial({
-        color: 0xd99b4e,
+        color: 0xf7cf86,
         transparent: true,
         opacity: 0,
         blending: THREE.AdditiveBlending,
@@ -64,8 +64,8 @@ export class EffectsSystem {
         dir: new THREE.Vector3(),
         totalDist: 0,
         traveled: 0,
-        speed: 240,
-        streakLen: 0.65,
+        speed: 310,
+        streakLen: 0.72,
         fadeLife: 0,
         active: false,
       });
@@ -108,29 +108,29 @@ export class EffectsSystem {
 
   triggerMuzzleFlash(worldPos) {
     this.muzzleLight.position.copy(worldPos);
-    this.muzzleLight.intensity = 4.0;
-    this._muzzleTimer = 0.04;
+    this.muzzleLight.intensity = 3.2;
+    this._muzzleTimer = 0.036;
   }
 
   spawnTracer(start, end) {
     const t = this.tracers[this._tracerIndex];
     this._tracerIndex = (this._tracerIndex + 1) % MAX_TRACERS;
     const dist = start.distanceTo(end);
-    if (dist < 0.8) return;
+    if (dist < 0.7) return;
 
     t.start.copy(start);
     t.dir.subVectors(end, start).normalize();
     t.totalDist = Math.min(dist, 95);
-    t.streakLen = Math.min(0.65, t.totalDist * 0.25);
-    t.traveled = Math.min(t.streakLen * 1.4, t.totalDist * 0.35);
-    t.fadeLife = 0.025;
+    t.streakLen = Math.min(0.72, t.totalDist * 0.25);
+    t.traveled = Math.min(t.streakLen * 1.15, t.totalDist * 0.28);
+    t.fadeLife = 0.022;
     t.active = true;
 
     const curLen = Math.max(0.18, Math.min(t.streakLen, t.traveled));
     t.mesh.position.copy(t.start).addScaledVector(t.dir, Math.max(0, t.traveled - curLen * 0.5));
     t.mesh.lookAt(end);
     t.mesh.scale.set(1, 1, curLen);
-    t.mesh.material.opacity = 0.48;
+    t.mesh.material.opacity = 0.44;
     t.mesh.visible = true;
   }
 

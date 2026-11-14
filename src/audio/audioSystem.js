@@ -60,25 +60,25 @@ export class AudioSystem {
     this.sfxBus.gain.value = 1.0;
     this.sfxBus.connect(this.masterGain);
 
-    // Outdoor wide stereo slapback bus (L/R offset early building echoes!)
+    // Outdoor wide stereo slapback bus (subtle early reflection without smearing 3D localization!)
     this.outdoorBus = ctx.createGain();
     this.outdoorBus.gain.value = 1.0;
 
-    const slapL = ctx.createDelay(0.6);
-    slapL.delayTime.value = 0.14;
-    const slapR = ctx.createDelay(0.6);
-    slapR.delayTime.value = 0.21;
+    const slapL = ctx.createDelay(0.5);
+    slapL.delayTime.value = 0.13;
+    const slapR = ctx.createDelay(0.5);
+    slapR.delayTime.value = 0.19;
     const slapLP = ctx.createBiquadFilter();
     slapLP.type = 'lowpass';
-    slapLP.frequency.value = 1950;
+    slapLP.frequency.value = 1550;
     const panL = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
     const panR = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    if (panL) panL.pan.value = -0.68;
-    if (panR) panR.pan.value = 0.68;
+    if (panL) panL.pan.value = -0.55;
+    if (panR) panR.pan.value = 0.55;
     const gL = ctx.createGain();
-    gL.gain.value = 0.24;
+    gL.gain.value = 0.11;
     const gR = ctx.createGain();
-    gR.gain.value = 0.18;
+    gR.gain.value = 0.08;
 
     this.outdoorBus.connect(this.sfxBus);
     this.outdoorBus.connect(slapLP);
@@ -101,13 +101,13 @@ export class AudioSystem {
     this.indoorBus.gain.value = 0.0;
 
     const convolver = ctx.createConvolver();
-    convolver.buffer = this._createIndoorImpulse(0.9, 3.6);
+    convolver.buffer = this._createIndoorImpulse(0.75, 4.0);
     const indoorBoost = ctx.createBiquadFilter();
     indoorBoost.type = 'lowshelf';
-    indoorBoost.frequency.value = 260;
-    indoorBoost.gain.value = 5.0;
+    indoorBoost.frequency.value = 250;
+    indoorBoost.gain.value = 4.0;
     const wetGain = ctx.createGain();
-    wetGain.gain.value = 1.05;
+    wetGain.gain.value = 0.85;
 
     this.indoorBus.connect(indoorBoost);
     indoorBoost.connect(this.sfxBus);
@@ -118,9 +118,9 @@ export class AudioSystem {
     // Ambience stereo chain
     this.ambienceFilter = ctx.createBiquadFilter();
     this.ambienceFilter.type = 'lowpass';
-    this.ambienceFilter.frequency.value = 16000;
+    this.ambienceFilter.frequency.value = 12000;
     this.ambienceGain = ctx.createGain();
-    this.ambienceGain.gain.value = 0.22;
+    this.ambienceGain.gain.value = 0.16;
     this.ambienceFilter.connect(this.ambienceGain);
     this.ambienceGain.connect(this.masterGain);
   }
@@ -128,7 +128,6 @@ export class AudioSystem {
   _createIndoorImpulse(duration, decay) {
     const ctx = this.ctx;
     const len = Math.floor(ctx.sampleRate * duration);
-    // True 2-channel decorrelated stereo impulse for spacious room localization
     const buf = ctx.createBuffer(2, len, ctx.sampleRate);
     for (let ch = 0; ch < 2; ch++) {
       const data = buf.getChannelData(ch);
@@ -136,8 +135,8 @@ export class AudioSystem {
       for (let i = 0; i < len; i++) {
         const t = i / len;
         const env = Math.pow(1 - t, decay);
-        const early = i < ctx.sampleRate * 0.09 && (i % stride) < 16 ? 1.55 : 1.0;
-        data[i] = (Math.random() * 2 - 1) * env * early * 0.65;
+        const early = i < ctx.sampleRate * 0.08 && (i % stride) < 16 ? 1.45 : 1.0;
+        data[i] = (Math.random() * 2 - 1) * env * early * 0.6;
       }
     }
     return buf;
@@ -206,10 +205,10 @@ export class AudioSystem {
     const nowIndoors = this.isPointIndoors(pos);
     if (nowIndoors !== this.isIndoors) {
       this.isIndoors = nowIndoors;
-      this.indoorBus.gain.setTargetAtTime(nowIndoors ? 1.15 : 0.0, t, 0.06);
+      this.indoorBus.gain.setTargetAtTime(nowIndoors ? 1.05 : 0.0, t, 0.06);
       this.outdoorBus.gain.setTargetAtTime(nowIndoors ? 0.0 : 1.0, t, 0.06);
-      this.ambienceFilter.frequency.setTargetAtTime(nowIndoors ? 520 : 16000, t, 0.08);
-      this.ambienceGain.gain.setTargetAtTime(nowIndoors ? 0.08 : 0.22, t, 0.08);
+      this.ambienceFilter.frequency.setTargetAtTime(nowIndoors ? 420 : 12000, t, 0.08);
+      this.ambienceGain.gain.setTargetAtTime(nowIndoors ? 0.05 : 0.16, t, 0.08);
     }
   }
 
@@ -227,12 +226,12 @@ export class AudioSystem {
 
   _createPanner(pos) {
     const p = this.ctx.createPanner();
-    // Full HRTF spatialization for clear stereo azimuth/elevation enemy localization
+    // Tight HRTF spatialization for distinct left/right/front/back enemy direction & distance drop-off
     p.panningModel = 'HRTF';
     p.distanceModel = 'inverse';
-    p.refDistance = 3.5;
-    p.maxDistance = 90;
-    p.rolloffFactor = 0.92;
+    p.refDistance = 2.2;
+    p.maxDistance = 85;
+    p.rolloffFactor = 1.18;
     p.positionX.setValueAtTime(pos.x, this.ctx.currentTime);
     p.positionY.setValueAtTime(pos.y, this.ctx.currentTime);
     p.positionZ.setValueAtTime(pos.z, this.ctx.currentTime);
@@ -244,24 +243,30 @@ export class AudioSystem {
     const t = ctx.currentTime;
     const g = ctx.createGain();
     const occluded = pos ? this._isOccluded(pos) : false;
-    g.gain.value = occluded ? gainVal * 0.38 : gainVal;
+    const diffFloor = pos && Math.abs(pos.y - this.listenerPos.y) > 2.3;
+    g.gain.value = occluded ? gainVal * (diffFloor ? 0.28 : 0.40) : gainVal;
 
     let tail = sourceNode;
     if (occluded) {
       const lpf = ctx.createBiquadFilter();
       lpf.type = 'lowpass';
-      lpf.frequency.setValueAtTime(680, t);
+      lpf.frequency.setValueAtTime(diffFloor ? 480 : 720, t);
       tail.connect(lpf);
       tail = lpf;
     }
 
     tail.connect(g);
     if (pos) {
+      // Enemy & world sounds use direct HRTF panner to sfxBus (or light zone feed) so echoes never confuse direction!
       const panner = this._createPanner(pos);
       g.connect(panner);
       if (useZoneBus) {
-        panner.connect(this.outdoorBus);
-        panner.connect(this.indoorBus);
+        panner.connect(this.sfxBus);
+        const zoneSend = ctx.createGain();
+        zoneSend.gain.value = 0.22;
+        panner.connect(zoneSend);
+        zoneSend.connect(this.outdoorBus);
+        zoneSend.connect(this.indoorBus);
       } else {
         panner.connect(this.sfxBus);
       }
@@ -286,31 +291,16 @@ export class AudioSystem {
     if (!this.ctx || !this.unlocked) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
-    const pitchVar = 0.94 + Math.random() * 0.12;
+    const pitchVar = 0.95 + Math.random() * 0.10;
     const sourcePos = isPlayer ? null : pos;
 
-    // Layer 1: Wide Stereo Mechanical & Chamber Crack (subtle player right-hand grip stereo presence)
-    const crackNoise = ctx.createBufferSource();
-    crackNoise.buffer = this._noiseBuffer(0.055);
-    const crackHp = ctx.createBiquadFilter();
-    crackHp.type = 'bandpass';
-    crackHp.frequency.value = weaponId === 'pistol' ? 2800 : 2100;
-    crackHp.Q.value = 1.1;
-    const crackEnv = ctx.createGain();
-    crackEnv.gain.setValueAtTime(isPlayer ? 0.56 : 0.44, t);
-    crackEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
-    crackNoise.connect(crackHp);
-    crackHp.connect(crackEnv);
-    this._routeNode(crackEnv, sourcePos, 1.0, true, isPlayer ? 0.12 : 0);
-    crackNoise.start(t);
-
-    // Layer 2: Punchy Body Sample
+    // Layer 1: Crisp single-shot recorded body sample (trimmed to 0ms attack)
     const buf = this.buffers.get(`${weaponId}_fire`);
     if (buf) {
       const bodySrc = ctx.createBufferSource();
       bodySrc.buffer = buf;
       bodySrc.playbackRate.value = pitchVar;
-      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.96 : 0.8, true, isPlayer ? 0.05 : 0);
+      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.92 : 0.78, true, isPlayer ? 0.04 : 0);
       bodySrc.start(t);
     } else {
       const osc = ctx.createOscillator();
@@ -326,24 +316,48 @@ export class AudioSystem {
       osc.stop(t + 0.15);
     }
 
-    // Layer 3: Wide Bass Tail (Haas-widened left-offset echo for first-person fullness)
-    const tailSrc = ctx.createBufferSource();
-    tailSrc.buffer = this._noiseBuffer(0.24);
-    const tailLp = ctx.createBiquadFilter();
-    tailLp.type = 'lowpass';
-    tailLp.frequency.value = weaponId === 'akm' ? 720 : 920;
-    const tailEnv = ctx.createGain();
-    tailEnv.gain.setValueAtTime(0.32, t);
-    tailEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
-    tailSrc.connect(tailLp);
-    tailLp.connect(tailEnv);
-    this._routeNode(tailEnv, sourcePos, 0.9, true, isPlayer ? -0.14 : 0);
-    tailSrc.start(t);
+    // Layer 2: Subtle mechanical bolt snap (player only — never delays or muddies enemy 3D cue)
+    if (isPlayer) {
+      const mechNoise = ctx.createBufferSource();
+      mechNoise.buffer = this._noiseBuffer(0.032);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'bandpass';
+      hp.frequency.value = weaponId === 'pistol' ? 3200 : 2400;
+      hp.Q.value = 1.4;
+      const mechEnv = ctx.createGain();
+      mechEnv.gain.setValueAtTime(0.24, t);
+      mechEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.032);
+      mechNoise.connect(hp);
+      hp.connect(mechEnv);
+      this._routeNode(mechEnv, null, 1.0, false, 0.10);
+      mechNoise.start(t);
+    }
 
     const dist = sourcePos ? Math.hypot(sourcePos.x - this.listenerPos.x, sourcePos.z - this.listenerPos.z) : 0;
     if (this.isIndoors && (isPlayer || dist < 6.5)) {
       this._triggerEarDuck();
     }
+  }
+
+  playWhiz(pos) {
+    this.playClip('bullet_whiz', pos, 0.68, 0.14);
+  }
+
+  playJump() {
+    this.playClip('jump', null, 0.42, 0.08);
+  }
+
+  playLand(fallSpeed = 4) {
+    const g = Math.min(0.75, Math.max(0.25, fallSpeed * 0.08));
+    this.playClip('land', null, g, 0.08);
+  }
+
+  playPlayerHurt() {
+    this.playClip('player_hurt', null, 0.72, 0.10);
+  }
+
+  playWeaponSwitch() {
+    this.playClip('weapon_switch', null, 0.55, 0.06);
   }
 
   playPickup() {
@@ -367,19 +381,8 @@ export class AudioSystem {
     const ctx = this.ctx;
     const t = ctx.currentTime;
     this.sfxBus.gain.cancelScheduledValues(t);
-    this.sfxBus.gain.setValueAtTime(0.58, t);
-    this.sfxBus.gain.linearRampToValueAtTime(1.0, t + 0.48);
-
-    const ring = ctx.createOscillator();
-    ring.type = 'sine';
-    ring.frequency.value = 3650;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.018, t);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.65);
-    ring.connect(g);
-    g.connect(this.masterGain);
-    ring.start(t);
-    ring.stop(t + 0.68);
+    this.sfxBus.gain.setValueAtTime(0.68, t);
+    this.sfxBus.gain.linearRampToValueAtTime(1.0, t + 0.36);
   }
 
   playClip(key, pos = null, gain = 0.7, pitchJitter = 0.06) {
@@ -389,7 +392,7 @@ export class AudioSystem {
       const src = this.ctx.createBufferSource();
       src.buffer = buf;
       src.playbackRate.value = 1 - pitchJitter * 0.5 + Math.random() * pitchJitter;
-      this._routeNode(src, pos, gain, true);
+      this._routeNode(src, pos, gain, !pos);
       src.start();
       return;
     }
@@ -407,7 +410,7 @@ export class AudioSystem {
     g.gain.setValueAtTime(gain * 0.35, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
     osc.connect(g);
-    this._routeNode(g, pos, gain, true);
+    this._routeNode(g, pos, gain, !pos);
     osc.start(t);
     osc.stop(t + 0.11);
   }

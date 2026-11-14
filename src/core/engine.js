@@ -22,13 +22,14 @@ export class GameEngine {
     this._shadowFrame = 0;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x6e7d8a);
-    this.scene.fog = new THREE.FogExp2(0x6e7d8a, 0.011);
+    this.scene.background = new THREE.Color(0x8899a6);
+    this.scene.fog = new THREE.FogExp2(0x8899a6, 0.0082);
 
     this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.04, 185);
     this.scene.add(this.camera);
 
-    // Lightweight procedural overcast woodland PMREM IBL for metallic weapons & vehicles
+    // Lightweight procedural overcast atmospheric sky gradient dome + PMREM IBL
+    this._initSkyDome();
     this._initEnvironmentIBL();
 
     // Balanced overcast European daylight + soft ground bounce so stairwells & ceilings stay readable without bleaching outdoors
@@ -70,6 +71,42 @@ export class GameEngine {
     this.resize();
     window.addEventListener('resize', () => this.resize());
     this.measureDisplayRefreshRate();
+  }
+
+  _initSkyDome() {
+    const geo = new THREE.SphereGeometry(64, 16, 10);
+    const pos = geo.attributes.position;
+    const colors = new Float32Array(pos.count * 3);
+    const colZenith = new THREE.Color(0x526b84);
+    const colMid = new THREE.Color(0x8899a6);
+    const colHoriz = new THREE.Color(0xb8c5cf);
+    const colGround = new THREE.Color(0x6e7874);
+    const tmp = new THREE.Color();
+
+    for (let i = 0; i < pos.count; i++) {
+      const h = pos.getY(i) / 64; // -1 .. +1
+      if (h >= 0.35) {
+        tmp.copy(colMid).lerp(colZenith, (h - 0.35) / 0.65);
+      } else if (h >= 0.0) {
+        tmp.copy(colHoriz).lerp(colMid, h / 0.35);
+      } else {
+        tmp.copy(colHoriz).lerp(colGround, Math.min(1, -h * 4.0));
+      }
+      colors[i * 3] = tmp.r;
+      colors[i * 3 + 1] = tmp.g;
+      colors[i * 3 + 2] = tmp.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const mat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+    this.skyDome = new THREE.Mesh(geo, mat);
+    this.skyDome.renderOrder = -10;
+    this.scene.add(this.skyDome);
   }
 
   _initEnvironmentIBL() {
@@ -165,6 +202,9 @@ export class GameEngine {
   }
 
   updateShadowFocus(playerPos) {
+    if (this.skyDome) {
+      this.skyDome.position.set(playerPos.x, 0, playerPos.z);
+    }
     const snap = 2.0;
     const sx = Math.round(playerPos.x / snap) * snap;
     const sz = Math.round(playerPos.z / snap) * snap;
@@ -174,23 +214,26 @@ export class GameEngine {
   }
 
   enforceTriangleBudget(lodObjects = []) {
-    if (this.triangles > MAX_TRIANGLES * 0.92) {
+    const triTarget = QUALITY_PRESETS[this.settings.quality]?.triTarget || MAX_TRIANGLES;
+    if (this.triangles > triTarget * 0.96) {
       this._overBudgetFrames++;
       if (this._overBudgetFrames > 4 && this.autoQualityDrop < 2) {
         this.autoQualityDrop++;
         this._overBudgetFrames = 0;
-        const dropFactor = this.autoQualityDrop === 1 ? 0.72 : 0.48;
+        const dropFactor = this.autoQualityDrop === 1 ? 0.76 : 0.56;
         for (const lod of lodObjects) {
           lod.traverse((child) => {
             if (child.isLOD) {
               for (const lvl of child.levels) {
                 if (!lvl._origDist) lvl._origDist = lvl.distance;
-                lvl.distance = lvl._origDist * dropFactor;
+                const minEff = lvl._origDist >= 75 ? 0.85 : 0.75;
+                const eff = lvl._origDist >= 60 ? Math.max(minEff, dropFactor) : dropFactor;
+                lvl.distance = lvl._origDist * eff;
               }
             }
           });
         }
-        this.camera.far = Math.max(55, (QUALITY_PRESETS[this.settings.quality]?.drawDist || 92) * dropFactor);
+        this.camera.far = Math.max(72, (QUALITY_PRESETS[this.settings.quality]?.drawDist || 96) * dropFactor);
         this.camera.updateProjectionMatrix();
       }
     } else {

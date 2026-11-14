@@ -74,17 +74,22 @@ function findPathAStar(waypoints, startPos, goalPos) {
 
 function createLowPolySilhouette(tintHex) {
   const mat = new THREE.MeshLambertMaterial({ color: tintHex });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x26282a });
+  const dark = new THREE.MeshLambertMaterial({ color: 0x24282e });
+  const skin = new THREE.MeshLambertMaterial({ color: 0x9c826b });
   const grp = new THREE.Group();
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.65, 0.24), mat);
-  torso.position.y = 1.08;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.24, 0.22), dark);
-  head.position.y = 1.56;
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.78, 0.22), mat);
-  legs.position.y = 0.39;
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.54), dark);
-  gun.position.set(-0.1, 1.18, 0.26);
-  grp.add(torso, head, legs, gun);
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.24), mat);
+  torso.position.y = 1.06;
+  const vest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.36, 0.27), dark);
+  vest.position.y = 1.12;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.21, 0.20), skin);
+  head.position.y = 1.52;
+  const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.13, 0.23), dark);
+  helmet.position.y = 1.60;
+  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.76, 0.22), mat);
+  legs.position.y = 0.38;
+  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.56), dark);
+  gun.position.set(-0.12, 1.18, 0.28);
+  grp.add(torso, vest, head, helmet, legs, gun);
   return grp;
 }
 
@@ -275,7 +280,7 @@ export class EnemySystem {
     if (wristBone && gunTemplate && gm) {
       wristBone.matrixWorld.decompose(_vWPos, _qWRot, _vWScl);
       const invScale = 1 / Math.max(0.0001, _vWScl.x);
-      const rawGun = gunTemplate.clone(true);
+      const rawGun = cloneSkinned(gunTemplate);
       rawGun.position.set(-gm.center.x, -gm.min.y - gm.size.y * 0.25, -gm.max.z + gm.size.z * 0.28);
       const gunPivot = new THREE.Group();
       gunPivot.add(rawGun);
@@ -288,8 +293,8 @@ export class EnemySystem {
     const lod = new THREE.LOD();
     lod.position.set(pos.x, pos.y, pos.z);
     lod.addLevel(m0, 0);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 32);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 74);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 20);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 52);
     this.scene.add(lod);
     this.lodObjects.push(lod);
 
@@ -337,6 +342,8 @@ export class EnemySystem {
       pathIdx: 0,
       reactionTimer: 0,
       fireCooldown: 0.65 + Math.random() * 0.55,
+      burstLeft: 0,
+      stepTimer: Math.random() * 0.4,
       recentShotTimer: 0,
       stuckTimer: 0,
       aiAccum: Math.random() * 0.14,
@@ -439,6 +446,9 @@ export class EnemySystem {
       }
     } else {
       enemy.hitTimer = 0.36;
+      enemy.strafeDir = -enemy.strafeDir;
+      enemy.strafeTimer = 1.2 + Math.random() * 0.8;
+      enemy.burstLeft = 0;
       const isHead = hitPoint && hitPoint.y > enemy.pos.y + 1.42;
       const hitAct = (isHead ? enemy.animMap.headHit : enemy.animMap.hit) || enemy.animMap.hit;
       if (hitAct) {
@@ -470,7 +480,7 @@ export class EnemySystem {
     return !hit;
   }
 
-  _moveWithPhysics(e, wishVx, wishVz, dt) {
+  _moveWithPhysics(e, wishVx, wishVz, dt, distToPlayer = 99) {
     if (!e.collider || !e.charCtrl) return;
 
     let sepX = 0;
@@ -488,21 +498,31 @@ export class EnemySystem {
       }
     }
 
-    const vx = wishVx + sepX;
-    const vz = wishVz + sepZ;
-    const horizMag = Math.hypot(vx, vz);
+    let vx = wishVx + sepX;
+    let vz = wishVz + sepZ;
+    let horizMag = Math.hypot(vx, vz);
 
     if (horizMag > 0.4) {
-      const rayDir = { x: vx / horizMag, y: 0, z: vz / horizMag };
-      const doorHit = this.physics.castRay(
-        { x: e.pos.x, y: e.pos.y + 1.0, z: e.pos.z },
-        rayDir,
-        1.35,
-        e.collider
-      );
-      if (doorHit && doorHit.meta?.kind === 'door' && doorHit.meta.ref && !doorHit.meta.ref.isOpen) {
-        doorHit.meta.ref.isOpen = true;
-        doorHit.meta.ref.targetAngle = (doorHit.meta.ref.openDir || 1) * Math.PI * 0.52;
+      const fx = vx / horizMag;
+      const fz = vz / horizMag;
+      const origin = { x: e.pos.x, y: e.pos.y + 0.95, z: e.pos.z };
+      const centerHit = this.physics.castRay(origin, { x: fx, y: 0, z: fz }, 1.28, e.collider);
+      if (centerHit?.meta?.kind === 'door' && centerHit.meta.ref && !centerHit.meta.ref.isOpen) {
+        centerHit.meta.ref.isOpen = true;
+        centerHit.meta.ref.targetAngle = (centerHit.meta.ref.openDir || 1) * Math.PI * 0.52;
+      } else if (centerHit && centerHit.meta?.kind !== 'enemy' && centerHit.meta?.kind !== 'player' && centerHit.meta?.kind !== 'stairs') {
+        // Whisker rays at +/-36 deg steer smoothly around doorframes & wall corners!
+        const c = 0.809;
+        const s = 0.588;
+        const leftDir = { x: fx * c - fz * s, y: 0, z: fx * s + fz * c };
+        const rightDir = { x: fx * c + fz * s, y: 0, z: -fx * s + fz * c };
+        const hitL = this.physics.castRay(origin, leftDir, 1.25, e.collider);
+        const hitR = this.physics.castRay(origin, rightDir, 1.25, e.collider);
+        const side = !hitL && hitR ? 1 : hitL && !hitR ? -1 : e.strafeDir;
+        const tx = -fz * side;
+        const tz = fx * side;
+        vx = (fx * 0.35 + tx * 0.92) * horizMag;
+        vz = (fz * 0.35 + tz * 0.92) * horizMag;
       }
     }
 
@@ -524,10 +544,19 @@ export class EnemySystem {
     e.body.setNextKinematicTranslation({ x: e.pos.x, y: e.pos.y + 0.9, z: e.pos.z });
     e.lod.position.set(e.pos.x, e.pos.y, e.pos.z);
 
-    if (horizMag > 0.5 && Math.hypot(e.pos.x - prevX, e.pos.z - prevZ) < horizMag * dt * 0.18) {
+    const movedXZ = Math.hypot(e.pos.x - prevX, e.pos.z - prevZ);
+    if (horizMag > 0.5 && movedXZ < horizMag * dt * 0.18) {
       e.stuckTimer += dt;
     } else {
       e.stuckTimer = Math.max(0, e.stuckTimer - dt * 2);
+    }
+
+    if (horizMag > 0.7 && movedXZ > 0.015 && distToPlayer < 22) {
+      e.stepTimer -= dt * Math.min(1.4, horizMag / 2.6);
+      if (e.stepTimer <= 0) {
+        e.stepTimer = 0.42;
+        this.audio.playClip(e.isOutdoor ? 'step_sand1' : 'step_stone1', e.pos, 0.30, 0.14);
+      }
     }
   }
 
@@ -547,7 +576,6 @@ export class EnemySystem {
       const distToPlayer = Math.hypot(playerPos.x - e.pos.x, playerPos.y - e.pos.y, playerPos.z - e.pos.z);
       const isFar = distToPlayer > 36;
 
-      // Step skeletal mixer cleanly (throttled at >36m for mobile FPS, zero expensive IK!)
       e.animAccum += dt;
       if (!isFar || e.animAccum >= 0.06) {
         e.mixer.update(e.animAccum);
@@ -569,9 +597,11 @@ export class EnemySystem {
         if (e.state !== 'engage' && e.state !== 'retreat') {
           e.state = 'engage';
           e.reactionTimer = this.difficulty.reactionDelay;
+          e.burstLeft = 0;
         }
       } else if (e.state === 'engage') {
         e.state = 'search';
+        e.burstLeft = 0;
         if (e.lastKnownTarget) {
           e.path = findPathAStar(this.waypoints, e.pos, e.lastKnownTarget);
           e.pathIdx = 0;
@@ -600,7 +630,7 @@ export class EnemySystem {
         }
       } else if (e.state === 'alert' || e.state === 'search') {
         e.aimPitch *= 0.9;
-        const moveRes = this._computePathMove(e, 2.35, stepDt);
+        const moveRes = this._computePathMove(e, 2.45, stepDt);
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
         desiredAnim = moveRes.moving ? 'walk' : 'idle';
@@ -626,8 +656,9 @@ export class EnemySystem {
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
         desiredAnim = moveRes.moving ? 'run' : 'aimIdle';
-        if (sees && e.fireCooldown <= 0) {
-          this._shootAtPlayer(e, playerPos, onDamagePlayer);
+        if (sees) {
+          e.fireCooldown -= stepDt;
+          if (e.fireCooldown <= 0) this._shootAtPlayer(e, playerPos, onDamagePlayer);
         }
       } else if (e.state === 'engage') {
         const dx = playerPos.x - e.pos.x;
@@ -639,23 +670,23 @@ export class EnemySystem {
 
         e.strafeTimer -= stepDt;
         if (e.strafeTimer <= 0) {
-          e.strafeTimer = 1.6 + Math.random() * 1.4;
+          e.strafeTimer = 1.4 + Math.random() * 1.2;
           e.strafeDir = -e.strafeDir;
         }
 
         if (horizDist > 16 && Math.abs(dy) < 1.8) {
-          wishVx = (dx / horizDist) * 2.9;
-          wishVz = (dz / horizDist) * 2.9;
+          wishVx = (dx / horizDist) * 2.95;
+          wishVz = (dz / horizDist) * 2.95;
           desiredAnim = 'run';
         } else if (horizDist < 4.5 && Math.abs(dy) < 1.8) {
-          wishVx = -(dx / Math.max(0.1, horizDist)) * 1.3;
-          wishVz = -(dz / Math.max(0.1, horizDist)) * 1.3;
+          wishVx = -(dx / Math.max(0.1, horizDist)) * 1.45;
+          wishVz = -(dz / Math.max(0.1, horizDist)) * 1.45;
           desiredAnim = 'aimWalk';
         } else if (horizDist > 5.0 && Math.abs(dy) < 1.8) {
           const rx = Math.cos(e.yaw) * e.strafeDir;
           const rz = -Math.sin(e.yaw) * e.strafeDir;
-          wishVx = rx * 1.15;
-          wishVz = rz * 1.15;
+          wishVx = rx * 1.35;
+          wishVz = rz * 1.35;
           desiredAnim = 'aimWalk';
         } else {
           desiredAnim = 'aimIdle';
@@ -671,7 +702,7 @@ export class EnemySystem {
         }
       }
 
-      this._moveWithPhysics(e, wishVx, wishVz, stepDt);
+      this._moveWithPhysics(e, wishVx, wishVz, stepDt, distToPlayer);
       e.lod.rotation.y = e.yaw;
       if (e.hitTimer <= 0) {
         this._switchAnim(e, desiredAnim);
@@ -701,10 +732,17 @@ export class EnemySystem {
   }
 
   _shootAtPlayer(e, playerPos, onDamagePlayer) {
-    e.fireCooldown = 0.58 + Math.random() * 0.52;
+    if (e.burstLeft <= 0) {
+      e.burstLeft = e.cfg.gun === 'pistol' ? 2 : 2 + Math.floor(Math.random() * 2);
+    }
+    e.burstLeft--;
+    e.fireCooldown = e.burstLeft > 0
+      ? (e.cfg.gun === 'pistol' ? 0.22 : 0.14)
+      : (0.85 + Math.random() * 0.55);
+
     e.recentShotTimer = 3.5;
     if (e.hitTimer <= 0 && e.animMap.shoot) {
-      e.hitTimer = 0.16;
+      e.hitTimer = 0.14;
       const prev = e.animMap[e.activeKey];
       if (prev && prev !== e.animMap.shoot) prev.fadeOut(0.06);
       e.animMap.shoot.reset().setEffectiveWeight(1).fadeIn(0.04).play();
@@ -742,8 +780,25 @@ export class EnemySystem {
 
     if (hit && hit.meta?.kind === 'player') {
       if (onDamagePlayer) onDamagePlayer(9 * this.difficulty.damageMult, e.pos);
-    } else if (hit) {
-      this.effects.spawnImpact(hit.point, hit.normal, hit.meta?.material || 'concrete');
+    } else {
+      if (hit) {
+        this.effects.spawnImpact(hit.point, hit.normal, hit.meta?.material || 'concrete');
+      }
+      // Supersonic bullet whiz crack near player's ear when enemy round narrowly misses!
+      const px = playerPos.x - _vMuzzle.x;
+      const py = (playerPos.y + 1.45) - _vMuzzle.y;
+      const pz = playerPos.z - _vMuzzle.z;
+      const projT = px * _vDir.x + py * _vDir.y + pz * _vDir.z;
+      const maxT = _vEnd.distanceTo(_vMuzzle);
+      if (projT > 2.0 && projT <= maxT + 0.5) {
+        const cx = _vMuzzle.x + _vDir.x * projT;
+        const cy = _vMuzzle.y + _vDir.y * projT;
+        const cz = _vMuzzle.z + _vDir.z * projT;
+        const nearDist = Math.hypot(cx - playerPos.x, cy - (playerPos.y + 1.45), cz - playerPos.z);
+        if (nearDist < 2.2) {
+          this.audio.playWhiz({ x: cx, y: cy, z: cz });
+        }
+      }
     }
   }
 }

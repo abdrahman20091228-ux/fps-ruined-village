@@ -22,6 +22,8 @@ export class PlayerController {
     this.isCrouching = false;
     this.isSprinting = false;
     this.bobPhase = 0;
+    this.landDip = 0;
+    this._airFallPeak = 0;
 
     this.health = 100;
     this.maxHealth = 100;
@@ -54,6 +56,8 @@ export class PlayerController {
     this.yaw = yaw;
     this.pitch = 0;
     this.velY = 0;
+    this.landDip = 0;
+    this._airFallPeak = 0;
     this.health = this.maxHealth;
     this.isCrouching = false;
     this.currentHeight = this.standHeight;
@@ -66,31 +70,35 @@ export class PlayerController {
     this.physics.colliderMeta.set(this.collider.handle, { material: 'player', kind: 'player' });
 
     this.charCtrl = this.physics.world.createCharacterController(0.025);
-    this.charCtrl.enableAutostep(0.42, 0.22, true);
-    this.charCtrl.enableSnapToGround(0.36);
-    this.charCtrl.setMaxSlopeClimbAngle((55 * Math.PI) / 180);
-    this.charCtrl.setMinSlopeSlideAngle((58 * Math.PI) / 180);
+    this.charCtrl.enableAutostep(0.45, 0.24, true);
+    this.charCtrl.enableSnapToGround(0.38);
+    this.charCtrl.setMaxSlopeClimbAngle((56 * Math.PI) / 180);
+    this.charCtrl.setMinSlopeSlideAngle((60 * Math.PI) / 180);
     this.charCtrl.setApplyImpulsesToDynamicBodies(true);
 
     this.prevPos.set(pos.x, pos.y + this.standHeight * 0.5, pos.z);
     this.currPos.copy(this.prevPos);
   }
 
-  step(dt, input, onFootstep) {
+  step(dt, input, callbacks = {}) {
     if (!this.body || !this.charCtrl) return;
+    const onFootstep = typeof callbacks === 'function' ? callbacks : callbacks.onFootstep;
+    const onJump = typeof callbacks === 'object' ? callbacks.onJump : null;
+    const onLand = typeof callbacks === 'object' ? callbacks.onLand : null;
 
     const t = this.body.translation();
     this.prevPos.set(t.x, t.y, t.z);
 
     this.isCrouching = !!input.crouch;
-    this.isSprinting = !!input.sprint && !this.isCrouching && !input.ads && input.moveY > 0.1;
+    this.isSprinting = !!input.sprint && !this.isCrouching && !input.ads && input.moveY > 0.25;
 
     const targetHeight = this.isCrouching ? this.crouchHeight : this.standHeight;
     this.currentHeight += (targetHeight - this.currentHeight) * Math.min(1, dt * 12);
     const targetEye = this.isCrouching ? 0.92 : 1.56;
     this.eyeOffset += (targetEye - this.eyeOffset) * Math.min(1, dt * 12);
+    this.landDip += (0 - this.landDip) * Math.min(1, dt * 14);
 
-    const speed = this.isCrouching ? 2.8 : this.isSprinting ? 7.0 : input.ads ? 3.0 : 4.9;
+    const maxSpeed = this.isCrouching ? 2.85 : this.isSprinting ? 7.15 : input.ads ? 2.95 : 4.95;
 
     const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
@@ -98,11 +106,19 @@ export class PlayerController {
     const wishDir = new THREE.Vector3()
       .addScaledVector(forward, input.moveY)
       .addScaledVector(right, input.moveX);
-    if (wishDir.lengthSq() > 1) wishDir.normalize();
+    const analogMag = Math.min(1.0, wishDir.length());
+    if (analogMag > 1e-4) wishDir.divideScalar(analogMag);
+    const speed = maxSpeed * analogMag;
 
     if (this.isGrounded && input.jump && !this.isCrouching) {
-      this.velY = 6.8;
+      this.velY = 6.9;
       this.isGrounded = false;
+      this._airFallPeak = 0;
+      if (onJump) onJump(this.getFeetPosition());
+    }
+
+    if (!this.isGrounded && this.velY < 0) {
+      this._airFallPeak = Math.max(this._airFallPeak, -this.velY);
     }
 
     this.velY -= 18.0 * dt;
@@ -116,9 +132,15 @@ export class PlayerController {
       z: wishDir.z * speed * dt,
     };
 
+    const wasGrounded = this.isGrounded;
     this.charCtrl.computeColliderMovement(this.collider, desiredMovement);
     const corrected = this.charCtrl.computedMovement();
     this.isGrounded = this.charCtrl.computedGrounded();
+    if (this.isGrounded && !wasGrounded && this._airFallPeak > 2.2) {
+      this.landDip = -Math.min(0.16, this._airFallPeak * 0.015);
+      if (onLand) onLand(this.getFeetPosition(), this._airFallPeak);
+      this._airFallPeak = 0;
+    }
     if (this.isGrounded && this.velY < 0) {
       this.velY = -0.5;
     }
@@ -133,15 +155,15 @@ export class PlayerController {
 
     // Footstep cadence & head-bob
     const horizSpeed = Math.hypot(corrected.x, corrected.z) / dt;
-    if (this.isGrounded && horizSpeed > 0.8) {
+    if (this.isGrounded && horizSpeed > 0.85) {
       this.bobPhase += dt * (this.isSprinting ? 13.5 : 9.2);
-      this._footstepTimer -= dt * (this.isSprinting ? 1.45 : 1.0);
+      this._footstepTimer -= dt * (this.isSprinting ? 1.48 : Math.min(1.15, Math.max(0.65, horizSpeed / 4.8)));
       if (this._footstepTimer <= 0) {
         this._footstepTimer = 0.44;
-        if (onFootstep) onFootstep(this.getFeetPosition());
+        if (onFootstep) onFootstep(this.getFeetPosition(), this.isSprinting);
       }
     } else {
-      this._footstepTimer = 0.1;
+      this._footstepTimer = 0.08;
     }
   }
 
@@ -155,9 +177,9 @@ export class PlayerController {
 
   getInterpolatedEyePosition(alpha) {
     const x = this.prevPos.x + (this.currPos.x - this.prevPos.x) * alpha;
-    const y = this.prevPos.y + (this.currPos.y - this.prevPos.y) * alpha - this.standHeight * 0.5 + this.eyeOffset;
+    const y = this.prevPos.y + (this.currPos.y - this.prevPos.y) * alpha - this.standHeight * 0.5 + this.eyeOffset + this.landDip;
     const z = this.prevPos.z + (this.currPos.z - this.prevPos.z) * alpha;
-    const bobY = this.isGrounded ? Math.sin(this.bobPhase) * 0.028 : 0;
+    const bobY = this.isGrounded ? Math.sin(this.bobPhase) * 0.025 : 0;
     return new THREE.Vector3(x + this.shakeOffset.x, y + bobY + this.shakeOffset.y, z + this.shakeOffset.z);
   }
 
