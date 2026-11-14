@@ -12,7 +12,7 @@ export class DoorSystem {
     this.doors.length = 0;
   }
 
-  createDoor({ hingePos, width = 1.05, height = 2.2, thickness = 0.09, baseYaw = 0, material }) {
+  createDoor({ hingePos, width = 1.05, height = 2.2, thickness = 0.09, baseYaw = 0, openDir = 1, material }) {
     const pivot = new THREE.Group();
     pivot.position.set(hingePos.x, hingePos.y, hingePos.z);
     pivot.rotation.y = baseYaw;
@@ -49,6 +49,7 @@ export class DoorSystem {
       height,
       thickness,
       baseYaw,
+      openDir,
       openAngle: 0,
       targetAngle: 0,
       isOpen: false,
@@ -82,7 +83,7 @@ export class DoorSystem {
 
   toggle(door, onToggleSound) {
     door.isOpen = !door.isOpen;
-    door.targetAngle = door.isOpen ? Math.PI * 0.52 : 0;
+    door.targetAngle = door.isOpen ? (door.openDir || 1) * Math.PI * 0.52 : 0;
     if (onToggleSound) onToggleSound(door);
   }
 

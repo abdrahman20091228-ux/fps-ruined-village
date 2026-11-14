@@ -89,24 +89,32 @@ function createLowPolySilhouette(tintHex) {
 }
 
 const ARCHETYPES = [
-  { key: 'fighter', colorHex: 0x4b563a, gun: 'akm' },
-  { key: 'swat', colorHex: 0x282a2f, gun: 'm4' },
-  { key: 'soldier', colorHex: 0x7b6a4d, gun: 'm4' },
-  { key: 'militia', colorHex: 0x525d42, gun: 'pistol' },
-  { key: 'fighter', colorHex: 0x4b563a, gun: 'akm' },
-  { key: 'swat', colorHex: 0x282a2f, gun: 'm4' },
-  { key: 'soldier', colorHex: 0x7b6a4d, gun: 'akm' },
-  { key: 'militia', colorHex: 0x525d42, gun: 'pistol' },
-  { key: 'fighter', colorHex: 0x4b563a, gun: 'akm' },
-  { key: 'swat', colorHex: 0x282a2f, gun: 'm4' },
-  { key: 'soldier', colorHex: 0x7b6a4d, gun: 'm4' },
-  { key: 'militia', colorHex: 0x525d42, gun: 'pistol' },
+  { key: 'fighter', colorHex: 0x556445, gun: 'm4' },
+  { key: 'swat', colorHex: 0x2a313a, gun: 'm4' },
+  { key: 'soldier', colorHex: 0x4d5b44, gun: 'akm' },
+  { key: 'militia', colorHex: 0x5d6447, gun: 'pistol' },
+  { key: 'fighter', colorHex: 0x556445, gun: 'akm' },
+  { key: 'swat', colorHex: 0x2a313a, gun: 'm4' },
+  { key: 'soldier', colorHex: 0x4d5b44, gun: 'm4' },
+  { key: 'militia', colorHex: 0x5d6447, gun: 'pistol' },
+  { key: 'fighter', colorHex: 0x556445, gun: 'akm' },
+  { key: 'swat', colorHex: 0x2a313a, gun: 'm4' },
+  { key: 'soldier', colorHex: 0x4d5b44, gun: 'm4' },
+  { key: 'militia', colorHex: 0x5d6447, gun: 'pistol' },
 ];
 
 const _vMuzzle = new THREE.Vector3();
 const _vTarget = new THREE.Vector3();
 const _vDir = new THREE.Vector3();
 const _vEnd = new THREE.Vector3();
+const _vWPos = new THREE.Vector3();
+const _qWRot = new THREE.Quaternion();
+const _vWScl = new THREE.Vector3();
+const _mGunBasis = new THREE.Matrix4().makeBasis(
+  new THREE.Vector3(0, 0, 1),
+  new THREE.Vector3(-1, 0, 0),
+  new THREE.Vector3(0, -1, 0)
+);
 
 export class EnemySystem {
   constructor(scene, physics, assets, effects, audio) {
@@ -121,23 +129,45 @@ export class EnemySystem {
     this.waypoints = [];
     this.difficulty = DIFFICULTIES.regular;
     this._models = null;
-    this._sharedClips = null;
+    this._worldGuns = null;
+    this._gunMetrics = null;
   }
 
   async preloadModels() {
     if (this._models) return;
-    const [fighter, swat, soldier, militia] = await Promise.all([
+    const [fighter, swat, soldier, militia, wm4, wakm, wpis] = await Promise.all([
       this.assets.loadModel('enemy_fighter'),
       this.assets.loadModel('enemy_swat'),
       this.assets.loadModel('enemy_soldier'),
       this.assets.loadModel('enemy_militia'),
+      this.assets.loadModel('world_m4'),
+      this.assets.loadModel('world_akm'),
+      this.assets.loadModel('world_pistol'),
     ]);
 
     this._models = { fighter, swat, soldier, militia };
-    // All 4 share identical Quaternius skeletal animation clips from enemy_fighter.glb
-    this._sharedClips = new Map();
-    for (const clip of fighter.animations || []) {
-      this._sharedClips.set(clip.name, clip);
+    this._worldGuns = { m4: wm4.scene, akm: wakm.scene, pistol: wpis.scene };
+    this._gunMetrics = {};
+    for (const [k, sceneObj] of Object.entries(this._worldGuns)) {
+      sceneObj.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = false;
+          o.receiveShadow = false;
+          if (o.material && o.material.isMeshStandardMaterial) {
+            const old = o.material;
+            o.material = new THREE.MeshLambertMaterial({
+              color: old.color ? old.color.clone() : 0xffffff,
+              map: old.map || null,
+            });
+          }
+        }
+      });
+      const box = new THREE.Box3().setFromObject(sceneObj);
+      const size = new THREE.Vector3();
+      const center = new THREE.Vector3();
+      box.getSize(size);
+      box.getCenter(center);
+      this._gunMetrics[k] = { min: box.min.clone(), max: box.max.clone(), size, center };
     }
   }
 
@@ -180,10 +210,14 @@ export class EnemySystem {
     const m0 = cloneSkinned(gltf.scene);
 
     let spineBone = null;
+    let wristBone = null;
     m0.traverse((obj) => {
-      if (obj.isBone && obj.name === 'spine_02') spineBone = obj;
+      if (obj.isBone) {
+        if (obj.name === 'Torso') spineBone = obj;
+        if (obj.name === 'WristR' || obj.name === 'Wrist.R') wristBone = obj;
+      }
       if (obj.isMesh) {
-        obj.castShadow = false; // Avoid 15-primitive skinned shadow passes for high mobile FPS
+        obj.castShadow = false;
         obj.receiveShadow = true;
         if (obj.material && obj.material.isMeshStandardMaterial) {
           const old = obj.material;
@@ -196,9 +230,14 @@ export class EnemySystem {
       }
     });
 
+    const clipsByName = new Map();
+    for (const clip of gltf.animations || []) {
+      clipsByName.set(clip.name, clip);
+    }
+
     const mixer = new THREE.AnimationMixer(m0);
     const clipAction = (name, loopOnce = false) => {
-      const clip = this._sharedClips.get(name);
+      const clip = clipsByName.get(name) || clipsByName.get(`CharacterArmature|${name}`);
       if (!clip) return null;
       const act = mixer.clipAction(clip);
       if (loopOnce) {
@@ -208,31 +247,48 @@ export class EnemySystem {
       return act;
     };
 
-    const isPistol = cfg.gun === 'pistol';
     const animMap = {
-      idle: clipAction(isPistol ? 'Pistol_Idle_Loop' : 'Rifle_Idle'),
-      aimIdle: clipAction(isPistol ? 'Pistol_Aim_Neutral' : 'Rifle_AimIdle'),
-      walk: clipAction(isPistol ? 'Pistol_Walk' : 'Rifle_Walk'),
-      aimWalk: clipAction(isPistol ? 'Pistol_Walk' : 'Rifle_AimWalk'),
-      run: clipAction(isPistol ? 'Pistol_Run' : 'Rifle_Run'),
-      hit: clipAction('Hit_Chest', true),
-      headHit: clipAction('Hit_Head', true),
-      death: clipAction('Death01', true),
+      idle: clipAction('Idle_Gun') || clipAction('Idle'),
+      aimIdle: clipAction('Idle_Gun_Pointing') || clipAction('Idle_Gun'),
+      shoot: clipAction('Idle_Gun_Shoot', true),
+      walk: clipAction('Walk'),
+      aimWalk: clipAction('Run_Shoot') || clipAction('Walk'),
+      run: clipAction('Run_Shoot') || clipAction('Run'),
+      hit: clipAction('HitRecieve', true),
+      headHit: clipAction('HitRecieve_2', true) || clipAction('HitRecieve', true),
+      death: clipAction('Death', true),
     };
     if (animMap.idle) {
       animMap.idle.play();
-      mixer.update(0.05 + idx * 0.11);
+      mixer.update(0.05 + idx * 0.09);
     }
 
-    // Quaternius fighter_idf is already 1.81m tall facing +Z
-    m0.scale.setScalar(0.98);
+    // Standardize human soldier height (~1.75m)
+    m0.scale.setScalar(cfg.key === 'militia' ? 0.94 : 1.04);
     m0.position.set(0, 0, 0);
     m0.rotation.set(0, 0, 0);
+    m0.updateMatrixWorld(true);
+
+    // Mount calibrated rifle/pistol cleanly into right hand wrist bone
+    const gunTemplate = this._worldGuns?.[cfg.gun];
+    const gm = this._gunMetrics?.[cfg.gun];
+    if (wristBone && gunTemplate && gm) {
+      wristBone.matrixWorld.decompose(_vWPos, _qWRot, _vWScl);
+      const invScale = 1 / Math.max(0.0001, _vWScl.x);
+      const rawGun = gunTemplate.clone(true);
+      rawGun.position.set(-gm.center.x, -gm.min.y - gm.size.y * 0.25, -gm.max.z + gm.size.z * 0.28);
+      const gunPivot = new THREE.Group();
+      gunPivot.add(rawGun);
+      gunPivot.quaternion.setFromRotationMatrix(_mGunBasis);
+      gunPivot.scale.setScalar(invScale * 0.78);
+      gunPivot.position.set(0.02 * invScale, 0.05 * invScale, -0.01 * invScale);
+      wristBone.add(gunPivot);
+    }
 
     const lod = new THREE.LOD();
     lod.position.set(pos.x, pos.y, pos.z);
     lod.addLevel(m0, 0);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 36);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 32);
     lod.addLevel(createLowPolySilhouette(cfg.colorHex), 74);
     this.scene.add(lod);
     this.lodObjects.push(lod);
@@ -265,7 +321,7 @@ export class EnemySystem {
       velY: 0,
       homePos: new THREE.Vector3(pos.x, pos.y, pos.z),
       patrolNodes,
-      yaw: idx === 0 ? Math.PI : Math.random() * Math.PI * 2,
+      yaw: Math.random() * Math.PI * 2,
       aimPitch: 0,
       hitTimer: 0,
       strafeDir: idx % 2 === 0 ? 1 : -1,
@@ -329,7 +385,7 @@ export class EnemySystem {
   }
 
   notifyGunfire(origin, isPlayerIndoors) {
-    const hearRange = isPlayerIndoors ? 18 : 40;
+    const hearRange = isPlayerIndoors ? 15 : 26;
     let maxChasers = 2;
     for (const e of this.enemies) {
       if (e.alive && e.state === 'alert') maxChasers--;
@@ -446,7 +502,7 @@ export class EnemySystem {
       );
       if (doorHit && doorHit.meta?.kind === 'door' && doorHit.meta.ref && !doorHit.meta.ref.isOpen) {
         doorHit.meta.ref.isOpen = true;
-        doorHit.meta.ref.targetAngle = Math.PI * 0.52;
+        doorHit.meta.ref.targetAngle = (doorHit.meta.ref.openDir || 1) * Math.PI * 0.52;
       }
     }
 
@@ -478,7 +534,7 @@ export class EnemySystem {
   update(dt, playerPos, onDamagePlayer) {
     for (const e of this.enemies) {
       if (!e.alive) {
-        if (e.deadTimer < 2.6) {
+        if (e.deadTimer < 1.8) {
           e.deadTimer += dt;
           e.mixer.update(dt);
         }
@@ -496,7 +552,7 @@ export class EnemySystem {
       if (!isFar || e.animAccum >= 0.06) {
         e.mixer.update(e.animAccum);
         if (e.spineBone && e.state === 'engage') {
-          e.spineBone.rotation.x += -e.aimPitch * 0.45;
+          e.spineBone.rotation.x += THREE.MathUtils.clamp(-e.aimPitch * 0.35, -0.35, 0.35);
         }
         e.animAccum = 0;
       }
@@ -645,8 +701,15 @@ export class EnemySystem {
   }
 
   _shootAtPlayer(e, playerPos, onDamagePlayer) {
-    e.fireCooldown = 0.44 + Math.random() * 0.48;
+    e.fireCooldown = 0.58 + Math.random() * 0.52;
     e.recentShotTimer = 3.5;
+    if (e.hitTimer <= 0 && e.animMap.shoot) {
+      e.hitTimer = 0.16;
+      const prev = e.animMap[e.activeKey];
+      if (prev && prev !== e.animMap.shoot) prev.fadeOut(0.06);
+      e.animMap.shoot.reset().setEffectiveWeight(1).fadeIn(0.04).play();
+      e.activeKey = 'shoot';
+    }
 
     const fwdX = Math.sin(e.yaw);
     const fwdZ = Math.cos(e.yaw);

@@ -15,32 +15,34 @@ export class GameEngine {
     this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.22;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.shadowMap.autoUpdate = false;
     this._shadowFrame = 0;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x768087);
-    this.scene.fog = new THREE.FogExp2(0x768087, 0.0115);
+    this.scene.background = new THREE.Color(0x6e7d8a);
+    this.scene.fog = new THREE.FogExp2(0x6e7d8a, 0.011);
 
-    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 175);
+    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.04, 185);
     this.scene.add(this.camera);
 
-    // Lightweight procedural dust-sky PMREM IBL for metallic weapons & vehicles
+    // Lightweight procedural overcast woodland PMREM IBL for metallic weapons & vehicles
     this._initEnvironmentIBL();
 
-    // Bright overcast military daylight rig: crisp hemisphere ambient + directional sun shadows
-    this.hemiLight = new THREE.HemisphereLight(0xc2d0dc, 0x857a6a, 1.24);
+    // Balanced overcast European daylight + soft ground bounce so stairwells & ceilings stay readable without bleaching outdoors
+    this.hemiLight = new THREE.HemisphereLight(0xc2d5e8, 0x7c8678, 0.90);
     this.scene.add(this.hemiLight);
+    this.ambientBounce = new THREE.AmbientLight(0x949ea8, 0.36);
+    this.scene.add(this.ambientBounce);
 
-    this.sunLight = new THREE.DirectionalLight(0xffe5c6, 2.05);
+    this.sunLight = new THREE.DirectionalLight(0xeef2f5, 1.05);
     this.sunLight.position.set(22, 32, 14);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.camera.near = 6;
-    this.sunLight.shadow.camera.far = 66;
-    const d = 20;
+    this.sunLight.shadow.camera.far = 56;
+    const d = 16;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
@@ -79,16 +81,16 @@ export class GameEngine {
       let r, g, b;
       if (v > 0.55) {
         const t = (v - 0.55) / 0.45;
-        r = THREE.MathUtils.lerp(180, 145, t);
-        g = THREE.MathUtils.lerp(186, 175, t);
-        b = THREE.MathUtils.lerp(182, 204, t);
+        r = THREE.MathUtils.lerp(156, 118, t);
+        g = THREE.MathUtils.lerp(174, 146, t);
+        b = THREE.MathUtils.lerp(188, 174, t);
       } else if (v > 0.44) {
-        r = 225; g = 208; b = 178;
+        r = 186; g = 196; b = 204;
       } else {
         const t = v / 0.44;
-        r = THREE.MathUtils.lerp(72, 138, t);
-        g = THREE.MathUtils.lerp(66, 126, t);
-        b = THREE.MathUtils.lerp(56, 108, t);
+        r = THREE.MathUtils.lerp(56, 98, t);
+        g = THREE.MathUtils.lerp(66, 112, t);
+        b = THREE.MathUtils.lerp(48, 86, t);
       }
       for (let x = 0; x < w; x++) {
         const sunBump = (Math.abs(x - 20) < 4 && v > 0.52 && v < 0.72) ? 1.18 : 1.0;

@@ -28,17 +28,17 @@ export const QUALITY_PRESETS = {
 export const DIFFICULTIES = {
   recruit: {
     label: 'Recruit',
-    reactionDelay: 0.85,
-    aimSpread: 0.165,
-    damageMult: 0.55,
-    sightRange: 25,
+    reactionDelay: 0.90,
+    aimSpread: 0.19,
+    damageMult: 0.45,
+    sightRange: 22,
   },
   regular: {
     label: 'Regular',
-    reactionDelay: 0.56,
-    aimSpread: 0.115,
-    damageMult: 0.72,
-    sightRange: 32,
+    reactionDelay: 0.72,
+    aimSpread: 0.155,
+    damageMult: 0.50,
+    sightRange: 25,
   },
   veteran: {
     label: 'Veteran',

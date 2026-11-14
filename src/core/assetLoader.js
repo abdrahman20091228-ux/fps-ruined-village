@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-const CACHE_NAME = 'ashes-of-vale-assets-v2';
+const CACHE_NAME = 'ashes-of-vale-assets-v5';
 
 export class AssetLoader {
   constructor() {
@@ -18,7 +18,7 @@ export class AssetLoader {
   }
 
   async fetchManifest() {
-    const res = await fetch('./assets-manifest.json', { cache: 'no-store' });
+    const res = await fetch(`./assets-manifest.json?v=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`Failed to fetch assets-manifest.json (${res.status})`);
     this.manifest = await res.json();
     return this.manifest;
@@ -28,13 +28,19 @@ export class AssetLoader {
     if (!('caches' in window)) {
       return { cachedBytes: 0, remainingBytes: manifest.totalBytes, cachedPaths: new Set() };
     }
+    const keys = await caches.keys();
+    for (const k of keys) {
+      if (k.startsWith('ashes-of-vale-') && k !== CACHE_NAME) {
+        await caches.delete(k);
+      }
+    }
     const cache = await caches.open(CACHE_NAME);
     const cachedPaths = new Set();
     let cachedBytes = 0;
     for (const file of manifest.files) {
       const url = `./${file.path}`;
       const match = await cache.match(url);
-      if (match) {
+      if (match && Number(match.headers.get('X-Asset-Size')) === file.size) {
         cachedPaths.add(file.path);
         cachedBytes += file.size;
       }
@@ -65,7 +71,7 @@ export class AssetLoader {
 
       if (cache && cachedPaths.has(file.path)) {
         const cachedResp = await cache.match(url);
-        if (cachedResp) {
+        if (cachedResp && Number(cachedResp.headers.get('X-Asset-Size')) === file.size) {
           blob = await cachedResp.blob();
           loadedBytes += file.size;
           onProgress?.(loadedBytes, totalBytes, file.path);
@@ -73,7 +79,7 @@ export class AssetLoader {
       }
 
       if (!blob) {
-        const resp = await fetch(url);
+        const resp = await fetch(url, { cache: 'no-store' });
         if (!resp.ok) {
           throw new Error(`${file.path} (HTTP ${resp.status})`);
         }
@@ -99,7 +105,10 @@ export class AssetLoader {
 
         if (cache) {
           try {
-            await cache.put(url, new Response(blob));
+            await cache.put(
+              url,
+              new Response(blob, { headers: { 'X-Asset-Size': String(file.size) } })
+            );
           } catch {
             // Quota fallback: continue without caching
           }
@@ -140,13 +149,23 @@ export class AssetLoader {
     const relPath = `assets/models/${name}.glb`;
     const url = this.objectUrls.get(relPath) || `./${relPath}`;
     const gltf = await this.gltfLoader.loadAsync(url);
-    normalizeModelToArtBible(gltf.scene);
+    const preservePalette =
+      name.startsWith('enemy_') ||
+      name.startsWith('dead_tree') ||
+      name === 'bush' ||
+      name === 'grass' ||
+      name === 'm4' ||
+      name === 'akm' ||
+      name === 'pistol' ||
+      name === 'holo' ||
+      name.startsWith('world_');
+    normalizeModelToArtBible(gltf.scene, { tintAmount: preservePalette ? 0.0 : 0.14 });
     this.models.set(name, gltf);
     return gltf;
   }
 }
 
-export function normalizeModelToArtBible(root, { roughnessMin = 0.72, tint = 0xdad5cc } = {}) {
+export function normalizeModelToArtBible(root, { roughnessMin = 0.58, tint = 0xc9c6be, tintAmount = 0.14 } = {}) {
   const tintColor = new THREE.Color(tint);
   root.traverse((obj) => {
     if (obj.isMesh) {
@@ -155,12 +174,12 @@ export function normalizeModelToArtBible(root, { roughnessMin = 0.72, tint = 0xd
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (const m of mats) {
         if (!m) continue;
-        if (m.color) m.color.lerp(tintColor, 0.16);
+        if (m.color && tintAmount > 0) m.color.lerp(tintColor, tintAmount);
         if (typeof m.roughness === 'number') {
           m.roughness = Math.max(roughnessMin, m.roughness);
         }
         if (typeof m.metalness === 'number') {
-          m.metalness = Math.min(0.45, m.metalness);
+          m.metalness = Math.min(0.42, m.metalness);
         }
       }
     }

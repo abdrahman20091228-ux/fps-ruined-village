@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-14T05:03:04.801Z",
-  "totalBytes": 6984349,
-  "fileCount": 63,
+  "generatedAt": "2026-11-14T08:02:55.290Z",
+  "totalBytes": 5127864,
+  "fileCount": 66,
   "categories": {
-    "code": 212353,
-    "models": 4591220,
-    "textures": 2023082,
+    "code": 227076,
+    "models": 3250772,
+    "textures": 1492322,
     "audio": 157694
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 22579,
+      "size": 25039,
       "category": "code"
     },
     {
@@ -22,17 +22,17 @@
     },
     {
       "path": "src/core/assetLoader.js",
-      "size": 5521,
+      "size": 6326,
       "category": "code"
     },
     {
       "path": "src/core/config.js",
-      "size": 2363,
+      "size": 2362,
       "category": "code"
     },
     {
       "path": "src/core/engine.js",
-      "size": 9241,
+      "size": 9385,
       "category": "code"
     },
     {
@@ -52,7 +52,7 @@
     },
     {
       "path": "src/main.js",
-      "size": 27449,
+      "size": 27982,
       "category": "code"
     },
     {
@@ -67,17 +67,17 @@
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 18327,
+      "size": 19322,
       "category": "code"
     },
     {
       "path": "src/world/doors.js",
-      "size": 3345,
+      "size": 3395,
       "category": "code"
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 47289,
+      "size": 57026,
       "category": "code"
     },
     {
@@ -152,7 +152,7 @@
     },
     {
       "path": "assets/models/akm.glb",
-      "size": 27076,
+      "size": 76052,
       "category": "models"
     },
     {
@@ -167,42 +167,52 @@
     },
     {
       "path": "assets/models/bush.glb",
-      "size": 48120,
+      "size": 30048,
       "category": "models"
     },
     {
       "path": "assets/models/dead_tree1.glb",
-      "size": 14820,
+      "size": 67024,
       "category": "models"
     },
     {
       "path": "assets/models/dead_tree2.glb",
-      "size": 20760,
+      "size": 74848,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_fighter.glb",
-      "size": 1093384,
+      "size": 520800,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_militia.glb",
-      "size": 935288,
+      "size": 486112,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_soldier.glb",
-      "size": 943684,
+      "size": 551852,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_swat.glb",
-      "size": 903048,
+      "size": 520804,
       "category": "models"
     },
     {
       "path": "assets/models/generator.glb",
       "size": 63800,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/grass.glb",
+      "size": 13748,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/holo.glb",
+      "size": 13848,
       "category": "models"
     },
     {
@@ -212,7 +222,7 @@
     },
     {
       "path": "assets/models/m4.glb",
-      "size": 22888,
+      "size": 127512,
       "category": "models"
     },
     {
@@ -232,12 +242,17 @@
     },
     {
       "path": "assets/models/pistol.glb",
-      "size": 25756,
+      "size": 28380,
       "category": "models"
     },
     {
       "path": "assets/models/road_barrier.glb",
       "size": 50668,
+      "category": "models"
+    },
+    {
+      "path": "assets/models/rock.glb",
+      "size": 14084,
       "category": "models"
     },
     {
@@ -257,17 +272,17 @@
     },
     {
       "path": "assets/models/world_akm.glb",
-      "size": 21616,
+      "size": 76052,
       "category": "models"
     },
     {
       "path": "assets/models/world_m4.glb",
-      "size": 21860,
+      "size": 127512,
       "category": "models"
     },
     {
       "path": "assets/models/world_pistol.glb",
-      "size": 19204,
+      "size": 28380,
       "category": "models"
     },
     {
@@ -287,7 +302,7 @@
     },
     {
       "path": "assets/textures/asphalt.webp",
-      "size": 373172,
+      "size": 204978,
       "category": "textures"
     },
     {
@@ -302,7 +317,7 @@
     },
     {
       "path": "assets/textures/dirt.webp",
-      "size": 330632,
+      "size": 230686,
       "category": "textures"
     },
     {
@@ -312,12 +327,12 @@
     },
     {
       "path": "assets/textures/plaster.webp",
-      "size": 327578,
+      "size": 189550,
       "category": "textures"
     },
     {
       "path": "assets/textures/roof_tiles.webp",
-      "size": 253242,
+      "size": 128650,
       "category": "textures"
     },
     {

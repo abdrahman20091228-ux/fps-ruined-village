@@ -1,11 +1,11 @@
 # Project Progress
 
-## Status: V4 Overhaul Complete — Deployed & Verified on GitHub Pages (`https://abdrahman20091228-ux.github.io/fps-ruined-village/`)
+## Status: V5 Overhaul Complete — Playtested & Verified on GitHub Pages (`https://abdrahman20091228-ux.github.io/fps-ruined-village/`)
 
-### Key V4 Overhaul Upgrades
-- **Low-Poly Weapons & Clean Tracers**: Replaced heavy viewmodels with crisp *TinyStrike* low-poly GLBs (`m4.glb` `1,495` tris, `akm.glb` `1,344` tris, `pistol.glb` `1,318` tris), recalibrated hip/ADS EOTech Holo & tritium iron sights (`v4_*_hip/ads.png`), and replaced chunky yellow bullet sticks with subtle thin translucent supersonic streaks + brass shell casings.
-- **Opening Drone Intro Cinematic**: Added a 3.4s recon drone fly-in (`REC // RECON DRONE 04`) sweeping from the 5-story tower over the ruined village to the player's starting checkpoint, with a one-tap `SKIP >>` button.
-- **Full World Colliders & Clean Spacing**: Added missing Rapier colliders to all perimeter compound walls (`x = ±24.2`, `z = +38.8`, `z = -43.5`), courtyard walls, telegraph poles, slim street lamp posts, tyres, bushes, garage shutters, and rooftop tank; fixed closed E/W `DoorSystem` initial collider yaw; separated overlapping wrecks, lamps, shutters, and tyres.
-- **Smooth Enemy Movement & Death Animations**: Upgraded to 4 tactical soldier silhouettes with real `Rifle_*`, `Pistol_*`, `Hit_*`, and `Death01` animation clips, `MeshLambertMaterial`, and ground-aligned `Death01` collapse without sinking or hovering.
-- **Mobile Performance, Smooth Gyro & Zero Input Lag**: Throttled shadow map refreshes (`shadowInterval`), disabled skinned/prop shadow casting, removed per-frame bone IK matrix stalls, clamped mobile DPR, and added MEMS deadzone + exponential low-pass smoothing to the gyroscope alongside low-latency `consumeLook()` touch/fire/ADS aiming.
-- **Asset Size Budget**: `6.66 MB` manifest (`63` files; `6.70 MB` total repo size — `89%` below the `60 MB` limit).
+### Key V5 Overhaul Upgrades
+- **Visible Mobile Weapons & Cache v5 Invalidation**: Fixed invisible weapons on mobile caused by stale CacheStorage entries and skinned pistol bones by upgrading cache key to `ashes-of-vale-assets-v5`, mounting `holo.glb` EOTech optic cleanly on `m4.glb`, and switching `pistol.glb` to rigid unskinned geometry.
+- **European Mossy Woodland Ruined Town**: Replaced desert ground and flat roofs with overcast mossy woodland terrain, cobblestone main avenue, pitched slate roofs with exposed timber rafters, boulders (`rock.glb`), grass tufts (`grass.glb`), and 3-tier conifer pine LODs.
+- **Clean Tactical Enemy Variants & Combat Tuning**: Replaced distorted enemies with 4 clean Quaternius CC0 tactical soldiers (`enemy_fighter`, `enemy_swat`, `enemy_soldier`, `enemy_militia`) carrying scaled `world_m4` / `world_akm` / `world_pistol` meshes, native grounded `Death01` collapses, spawn checkpoint cover, and fair `recruit`/`regular` reaction & accuracy tuning.
+- **Interior Navigation, Doors & Stairwell Daylighting**: Swung house doors inward (`openDir`) so sidewalks stay unobstructed, widened 5-story tower stairwell windows (`2.6m`), excluded interior plaster from shadow casting, lifted ambient ground bounce light, added `INDOORS · F1..F5` / `ROOFTOP` floor HUD telemetry, and reset Ammo Crates properly on mission restart.
+- **Aggressive End-to-End Playtest Verification**: Verified menu, drone flyover, all 3 weapons (hip/ADS/reload), House 0 inward door entry (`INDOORS · F1`), Ammo Crate & Medkit pickups, enemy combat & collapse, 5-story tower lobby & switchback staircase ascent to `INDOORS · F2`, and HUD Button Customizer with `0` console/page errors and triangles `< 390k / 500k`.
+- **Asset Size Budget**: `4.89 MB` manifest (`66` files; `4.93 MB` total repo size across `76` files — `91.8%` below the `60 MB` limit).

@@ -74,10 +74,10 @@ function showMissionBanner() {
   document.getElementById('mission-banner').classList.remove('hidden');
 }
 
-function showMedkitToast(healedAmount) {
+function showPickupToast(msg) {
   medkitToastTimer = 2.0;
   const el = document.getElementById('medkit-toast');
-  el.textContent = `+${healedAmount} HP // MEDKIT`;
+  el.textContent = msg;
   el.classList.remove('hidden');
 }
 
@@ -259,14 +259,15 @@ async function buildWorld() {
     await village.build();
     audio.setIndoorZones(village.indoorZones);
 
-    const [pistolGltf, akmGltf, m4Gltf] = await Promise.all([
+    const [pistolGltf, akmGltf, m4Gltf, holoGltf] = await Promise.all([
       assets.loadModel('pistol'),
       assets.loadModel('akm'),
       assets.loadModel('m4'),
+      assets.loadModel('holo'),
     ]);
     weapons.attachWeaponModel('pistol', pistolGltf.scene);
     weapons.attachWeaponModel('akm', akmGltf.scene);
-    weapons.attachWeaponModel('m4', m4Gltf.scene);
+    weapons.attachWeaponModel('m4', m4Gltf.scene, holoGltf.scene);
     worldBuilt = true;
   }
 
@@ -286,6 +287,7 @@ async function restartMission() {
     engine.camera.updateProjectionMatrix();
   }
   village?.resetMedkits();
+  village?.resetAmmoBoxes();
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   totalEnemies = enemySys.getRemainingCount();
   player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
@@ -332,6 +334,7 @@ function bindUI() {
     input.requestFullscreenLandscape();
     if (gameState === 'menu') {
       village?.resetMedkits();
+      village?.resetAmmoBoxes();
       await enemySys.spawnVillageSquad(village, settings.difficulty);
       totalEnemies = enemySys.getRemainingCount();
       player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
@@ -542,7 +545,12 @@ async function boot() {
       const healed = village ? village.updateMedkits(dt, player.getFeetPosition(), player) : 0;
       if (healed > 0) {
         audio.playPickup();
-        showMedkitToast(healed);
+        showPickupToast(`+${healed} HP // MEDKIT`);
+      }
+      const addedAmmo = village ? village.updateAmmoBoxes(dt, player.getFeetPosition(), weapons) : 0;
+      if (addedAmmo > 0) {
+        audio.playPickup();
+        showPickupToast(`+${addedAmmo} ROUNDS // AMMO CRATE`);
       }
 
       doorSystem.step(dt);
@@ -655,7 +663,11 @@ async function boot() {
         const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);
         const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
         document.getElementById('compass-dir').textContent = `${dirs[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
-        document.getElementById('zone-indicator').textContent = audio.isIndoors ? 'INDOORS' : 'OUTDOORS';
+        const feetY = player.getFeetPosition().y;
+        const floorNum = Math.max(1, Math.min(6, Math.floor((feetY + 0.5) / 3.1) + 1));
+        document.getElementById('zone-indicator').textContent = audio.isIndoors
+          ? (floorNum > 5 ? 'ROOFTOP' : `INDOORS · F${floorNum}`)
+          : 'OUTDOORS';
 
         // Objective & Combat HUD
         document.getElementById('objective-count').textContent = `${enemySys.getRemainingCount()} / ${totalEnemies}`;
