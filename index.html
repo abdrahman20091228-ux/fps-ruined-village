@@ -46,7 +46,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="screen-overlay">
     <div class="loading-panel">
-      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V3</div>
+      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V4</div>
       <h1 class="game-title">ASHES OF VALE</h1>
       <p class="subtitle">CLOSE-QUARTERS MULTI-STORY VILLAGE ASSAULT</p>
 
@@ -179,12 +179,12 @@
       </div>
       <div class="modal-body settings-grid">
         <label class="setting-row">
-          <span>Touch Look Sensitivity <strong id="val-sensitivity">2.4</strong></span>
-          <input id="set-sensitivity" type="range" min="0.5" max="6.0" step="0.25" value="2.4" />
+          <span>Touch Look Sensitivity <strong id="val-sensitivity">1.60</strong></span>
+          <input id="set-sensitivity" type="range" min="0.4" max="4.0" step="0.1" value="1.6" />
         </label>
         <label class="setting-row">
-          <span>Gyroscope Sensitivity <strong id="val-gyro-sens">2.6</strong></span>
-          <input id="set-gyro-sens" type="range" min="0.4" max="6.0" step="0.2" value="2.6" />
+          <span>Gyroscope Sensitivity <strong id="val-gyro-sens">1.0</strong></span>
+          <input id="set-gyro-sens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" />
         </label>
         <label class="setting-row setting-toggle">
           <span>Gyroscope Aiming (Motion)</span>
@@ -195,8 +195,8 @@
           <input id="set-ads-hold" type="checkbox" checked />
         </label>
         <label class="setting-row">
-          <span>Resolution Scale <strong id="val-res-scale">0.80</strong></span>
-          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.8" />
+          <span>Resolution Scale <strong id="val-res-scale">0.75</strong></span>
+          <input id="set-res-scale" type="range" min="0.5" max="1.0" step="0.05" value="0.75" />
         </label>
         <label class="setting-row">
           <span>Graphics Quality</span>
@@ -265,6 +265,20 @@
       <div class="end-actions">
         <button id="btn-restart-end" class="btn-tactical btn-primary">RESTART MISSION</button>
         <button id="btn-menu-end" class="btn-tactical">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tactical Opening Intro Cinematic Overlay -->
+  <div id="intro-overlay" class="intro-overlay hidden">
+    <div class="intro-bar intro-bar-top">
+      <span class="intro-rec">REC // RECON DRONE 04</span>
+      <button id="btn-skip-intro" class="btn-tactical btn-skip">SKIP &raquo;</button>
+    </div>
+    <div class="intro-bar intro-bar-bottom">
+      <div class="intro-caption">
+        <span class="intro-op">OPERATION: ASHEN THRESHOLD // SECTOR 04</span>
+        <strong id="intro-subtitle">12 HOSTILES DETECTED — BREACH HOUSES &amp; 5-STORY TOWER</strong>
       </div>
     </div>
   </div>

@@ -61,24 +61,16 @@ export class VillageBuilder {
     ]);
 
     this.mats = {
-      concrete: new THREE.MeshStandardMaterial({ map: texConcrete, roughness: 0.92, metalness: 0.04 }),
-      brick: new THREE.MeshStandardMaterial({ map: texBrick, roughness: 0.9, metalness: 0.02 }),
-      plaster: new THREE.MeshStandardMaterial({ map: texPlaster, roughness: 0.91, metalness: 0.02 }),
-      wood: new THREE.MeshStandardMaterial({ map: texWood, roughness: 0.85, metalness: 0.04 }),
-      dirt: new THREE.MeshStandardMaterial({ map: texDirt, roughness: 0.96, metalness: 0.0 }),
-      metal: new THREE.MeshStandardMaterial({ map: texMetal, roughness: 0.58, metalness: 0.52 }),
-      roof: new THREE.MeshStandardMaterial({ map: texRoof, roughness: 0.88, metalness: 0.04 }),
-      asphalt: new THREE.MeshStandardMaterial({ map: texAsphalt, roughness: 0.94, metalness: 0.02 }),
-      trimDark: new THREE.MeshStandardMaterial({ color: 0x3b3d3e, roughness: 0.86, metalness: 0.14 }),
+      concrete: new THREE.MeshLambertMaterial({ map: texConcrete }),
+      brick: new THREE.MeshLambertMaterial({ map: texBrick }),
+      plaster: new THREE.MeshLambertMaterial({ map: texPlaster }),
+      wood: new THREE.MeshLambertMaterial({ map: texWood }),
+      dirt: new THREE.MeshLambertMaterial({ map: texDirt }),
+      metal: new THREE.MeshStandardMaterial({ map: texMetal, roughness: 0.55, metalness: 0.50 }),
+      roof: new THREE.MeshLambertMaterial({ map: texRoof }),
+      asphalt: new THREE.MeshLambertMaterial({ map: texAsphalt }),
+      trimDark: new THREE.MeshLambertMaterial({ color: 0x3b3d3e }),
       stripe: new THREE.MeshBasicMaterial({ color: 0x9b968a, transparent: true, opacity: 0.55, depthWrite: false }),
-      scorch: new THREE.MeshBasicMaterial({
-        color: 0x1a1714,
-        transparent: true,
-        opacity: 0.52,
-        depthWrite: false,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-      }),
     };
 
     this._buildTerrainAndRoads();
@@ -313,14 +305,14 @@ export class VillageBuilder {
         }
       });
 
-      // Structural corner concrete pilasters
+      // Structural corner concrete pilasters (slightly proud of wall face to prevent coplanar Z-fighting)
       for (const sx of [-W / 2, W / 2]) {
         for (const sz of [-D / 2, D / 2]) {
-          addBox(sx, yMid, sz, 0.42, H, 0.42, 'concrete', false, false);
+          addBox(sx, yMid, sz, 0.44, H - 0.18, 0.44, 'concrete', false, false);
         }
       }
       // Concrete belt cornice beam between stories
-      addBox(0, y0 + H, 0, W + 0.36, 0.18, D + 0.36, 'concrete', false, false);
+      addBox(0, y0 + H, 0, W + 0.48, 0.16, D + 0.48, 'concrete', false, false);
     };
 
     for (let f = 0; f < stories; f++) {
@@ -357,8 +349,8 @@ export class VillageBuilder {
     }
     lod1.roof.push(makeBoxGeo(W + 0.4, 0.3, D + 0.4, 0, roofY + 0.18, 0));
 
-    // Rooftop water tank / parapet corner pier detail
-    addBox(-W * 0.25, roofY + 0.42, -D * 0.22, 1.1, 0.84, 0.9, 'trimDark', false, false);
+    // Rooftop water tank / parapet corner pier detail (collided)
+    addBox(-W * 0.25, roofY + 0.42, -D * 0.22, 1.1, 0.84, 0.9, 'trimDark', false, true);
 
     // Indoor sound roof collider
     this.physics.addStaticBox({ x: cx, y: roofY + 0.15, z: cz }, { x: W / 2, y: 0.15, z: D / 2 }, null, {
@@ -377,25 +369,6 @@ export class VillageBuilder {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       g0.add(mesh);
-    }
-    // Crisp flush scorch marks placed on solid piers flanking the breach (never floating in doorway!)
-    const scorchGeo = new THREE.PlaneGeometry(1.75, 1.15);
-    const addScorch = (sx, sy, sz, ry) => {
-      const s = new THREE.Mesh(scorchGeo, this.mats.scorch);
-      s.position.set(sx, sy, sz);
-      s.rotation.y = ry;
-      g0.add(s);
-    };
-    if (breachSide === 'N' || breachSide === 'S') {
-      const zFace = breachSide === 'S' ? D / 2 + 0.155 : -D / 2 - 0.155;
-      const ry = breachSide === 'N' ? Math.PI : 0;
-      addScorch(-W / 2 + 1.4, 1.55, zFace, ry);
-      addScorch(W / 2 - 1.4, 1.55, zFace, ry);
-    } else {
-      const xFace = breachSide === 'E' ? W / 2 + 0.155 : -W / 2 - 0.155;
-      const ry = breachSide === 'E' ? Math.PI / 2 : -Math.PI / 2;
-      addScorch(xFace, 1.55, -D / 2 + 1.15, ry);
-      addScorch(xFace, 1.55, D / 2 - 1.15, ry);
     }
 
     const g1 = new THREE.Group();
@@ -602,8 +575,9 @@ export class VillageBuilder {
   }
 
   _buildCourtyardWalls() {
-    // Low ruined brick/concrete compound yard walls & sandbag bunkers connecting street houses
+    // Ruined brick/concrete compound yard walls & full perimeter compound walls (batched into 2 draw calls + 100% collided!)
     const segments = [
+      // Interior courtyard & street tactical cover walls
       { x: -12.2, z: 12.2, w: 7.4, h: 1.35, d: 0.35, mat: 'brick' },
       { x: 12.2, z: 11.4, w: 7.2, h: 1.25, d: 0.35, mat: 'concrete' },
       { x: -12.2, z: -9.8, w: 6.4, h: 1.25, d: 0.35, mat: 'concrete' },
@@ -611,19 +585,38 @@ export class VillageBuilder {
       { x: 0.0, z: 23.0, w: 3.8, h: 1.15, d: 0.38, mat: 'concrete' },
       { x: -3.6, z: -22.8, w: 3.4, h: 1.18, d: 0.38, mat: 'brick' },
       { x: 3.6, z: -22.8, w: 3.2, h: 1.18, d: 0.38, mat: 'concrete' },
+      // West Perimeter Compound Wall (x = -24.2) with ruined height variation
+      { x: -24.2, z: 22.0, w: 0.45, h: 2.3, d: 32.0, mat: 'concrete' },
+      { x: -24.2, z: -12.0, w: 0.45, h: 2.1, d: 34.0, mat: 'brick' },
+      { x: -24.2, z: -36.0, w: 0.45, h: 2.4, d: 14.0, mat: 'concrete' },
+      // East Perimeter Compound Wall (x = +24.2)
+      { x: 24.2, z: 22.0, w: 0.45, h: 2.2, d: 32.0, mat: 'brick' },
+      { x: 24.2, z: -12.0, w: 0.45, h: 2.4, d: 34.0, mat: 'concrete' },
+      { x: 24.2, z: -36.0, w: 0.45, h: 2.1, d: 14.0, mat: 'brick' },
+      // South Perimeter Wall behind spawn (z = +38.8)
+      { x: -13.0, z: 38.8, w: 22.4, h: 2.2, d: 0.45, mat: 'concrete' },
+      { x: 13.0, z: 38.8, w: 22.4, h: 2.2, d: 0.45, mat: 'brick' },
+      { x: 0.0, z: 38.8, w: 4.0, h: 1.35, d: 0.45, mat: 'concrete' },
+      // North Perimeter Wall behind 5-story tower (z = -43.5)
+      { x: -12.5, z: -43.5, w: 23.4, h: 2.4, d: 0.45, mat: 'brick' },
+      { x: 12.5, z: -43.5, w: 23.4, h: 2.4, d: 0.45, mat: 'concrete' },
     ];
+    const buckets = { brick: [], concrete: [] };
     for (const s of segments) {
-      const m = new THREE.Mesh(makeBoxGeo(s.w, s.h, s.d, 0, 0, 0), this.mats[s.mat]);
-      m.position.set(s.x, s.h / 2, s.z);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.scene.add(m);
+      buckets[s.mat].push(makeBoxGeo(s.w, s.h, s.d, s.x, s.h / 2, s.z));
       this.physics.addStaticBox(
         { x: s.x, y: s.h / 2, z: s.z },
         { x: s.w / 2, y: s.h / 2, z: s.d / 2 },
         null,
         { material: s.mat, kind: 'wall', penetrable: false }
       );
+    }
+    for (const [matKey, geos] of Object.entries(buckets)) {
+      if (!geos.length) continue;
+      const m = new THREE.Mesh(mergeGeometries(geos, false), this.mats[matKey]);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.scene.add(m);
     }
   }
 
@@ -719,10 +712,10 @@ export class VillageBuilder {
       }
     };
 
-    // Street Vehicle Wrecks (burnt pickups, sedans, tarp-covered cars — hero street shadows)
-    placeProp(pickupGltf, { x: -2.2, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 46, castShadow: true });
-    placeProp(sedanGltf, { x: 2.5, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 46, castShadow: true });
-    placeProp(carGltf, { x: -2.0, y: 0.03, z: -17.5 }, 1.18, 0.96, 'metal', { cullDist: 46, castShadow: false });
+    // Street Vehicle Wrecks (burnt pickups, sedans, tarp-covered cars — spaced clearly away from lamps & barriers)
+    placeProp(pickupGltf, { x: -2.0, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 46, castShadow: true });
+    placeProp(sedanGltf, { x: 1.85, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 46, castShadow: true });
+    placeProp(carGltf, { x: -1.35, y: 0.03, z: -15.4 }, 0.92, 0.96, 'metal', { cullDist: 46, castShadow: false });
     placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 46, castShadow: false });
 
     // Road Barriers (Jersey concrete blocks — castShadow false for big FPS boost on mobile!)
@@ -734,22 +727,34 @@ export class VillageBuilder {
       { x: 3.2, z: -25.0, ry: -0.1 },
     ].forEach((b) => placeProp(barrierGltf, { x: b.x, y: 0.03, z: b.z }, b.ry, 0.95, 'concrete', { cullDist: 40, castShadow: false }));
 
-    // Street Lamps lining sidewalks along main avenue
-    for (let z = -22; z <= 28; z += 16) {
-      placeProp(lampGltf, { x: -4.85, y: 0.1, z }, Math.PI / 2, 1.0, 'metal', { cullDist: 38, castShadow: false });
-      placeProp(lampGltf, { x: 4.85, y: 0.1, z: z - 6 }, -Math.PI / 2, 1.0, 'metal', { cullDist: 38, castShadow: false });
+    // Street Lamps lining inner curb (x = +-4.55) with slim post-only collider so overhang never blocks movement
+    for (const lz of [-18, -2, 14, 28]) {
+      for (const side of [-1, 1]) {
+        const lx = side * 4.55;
+        const lzz = side === 1 ? lz - 4 : lz;
+        placeProp(lampGltf, { x: lx, y: 0.1, z: lzz }, side === -1 ? Math.PI / 2 : -Math.PI / 2, 1.0, 'metal', {
+          collide: false,
+          cullDist: 38,
+          castShadow: false,
+        });
+        this.physics.addStaticBox({ x: lx, y: 2.2, z: lzz }, { x: 0.16, y: 2.1, z: 0.16 }, null, {
+          material: 'metal',
+          kind: 'prop',
+          penetrable: false,
+        });
+      }
     }
 
-    // Garage shutters on House 2 & House 4
-    placeProp(shutterGltf, { x: -12.2, y: 0.2, z: 3.9 }, 0, 0.95, 'metal', { collide: false, cullDist: 36 });
-    placeProp(shutterGltf, { x: -12.5, y: 0.2, z: -12.1 }, 0, 0.9, 'metal', { collide: false, cullDist: 36 });
+    // Garage shutters mounted flush on solid piers of House 2 (South pier) & House 4 (North pier)
+    placeProp(shutterGltf, { x: -15.1, y: 0.2, z: 4.02 }, 0, 0.85, 'metal', { collide: true, cullDist: 36 });
+    placeProp(shutterGltf, { x: -15.3, y: 0.2, z: -20.02 }, Math.PI, 0.85, 'metal', { collide: true, cullDist: 36 });
 
-    // Tyre Barricades & Corner Clusters
+    // Tyre Barricades & Corner Clusters (spaced cleanly away from barriers & lamps, all collided)
     [
-      { x: 3.8, z: 24.4 }, { x: 4.3, z: 23.9 }, { x: -4.4, z: 11.4 },
-      { x: 3.8, z: -12.6 }, { x: -4.3, z: -26.5 }, { x: 7.4, z: 5.5 },
+      { x: 3.65, z: 22.0 }, { x: 4.15, z: 21.3 }, { x: -4.2, z: 10.6 },
+      { x: 4.5, z: -12.6 }, { x: -4.6, z: -26.5 }, { x: 7.4, z: 5.5 },
     ].forEach((p, idx) =>
-      placeProp(tyreGltf, { x: p.x, y: 0.03, z: p.z }, idx * 0.8, 1.0, 'dirt', { dynamic: false, collide: false, cullDist: 26, tiny: true })
+      placeProp(tyreGltf, { x: p.x, y: 0.03, z: p.z }, idx * 0.8, 1.0, 'dirt', { dynamic: false, collide: true, cullDist: 34, tiny: true })
     );
 
     // Generators & Jerrycans
@@ -893,9 +898,9 @@ export class VillageBuilder {
     });
 
     const bushSpots = [
-      { x: -8.0, z: 25.5 }, { x: 8.2, z: 24.8 },
-      { x: -17.8, z: 12.5 }, { x: 17.8, z: 11.2 },
-      { x: -9.2, z: -24.2 }, { x: 9.6, z: -24.4 },
+      { x: -19.2, z: 31.2 }, { x: 19.2, z: 30.8 },
+      { x: -19.0, z: 12.8 }, { x: 19.0, z: 11.4 },
+      { x: -9.2, z: -23.6 }, { x: 9.6, z: -23.6 },
     ];
     bushSpots.forEach((sp, i) => {
       const clone = bushGltf.scene.clone(true);
@@ -918,15 +923,26 @@ export class VillageBuilder {
       lod.addLevel(new THREE.Group(), 26);
       this.scene.add(lod);
       this.lodObjects.push(lod);
+
+      this.physics.addStaticBox({ x: sp.x, y: 0.7, z: sp.z }, { x: 0.48, y: 0.7, z: 0.48 }, null, {
+        material: 'wood',
+        kind: 'prop',
+        penetrable: true,
+      });
     });
 
-    // Timber Telegraph Poles + Overhead Wires along the street
+    // Timber Telegraph Poles + Overhead Wires placed cleanly outside sidewalks (x = +-6.95, collided)
     const poleGeos = [];
-    const poleXs = [-5.2, 5.2];
+    const poleXs = [-6.95, 6.95];
     for (const px of poleXs) {
       for (let pz = -20; pz <= 26; pz += 15) {
         poleGeos.push(makeBoxGeo(0.22, 6.8, 0.22, px, 3.4, pz));
         poleGeos.push(makeBoxGeo(1.3, 0.1, 0.1, px, 6.4, pz));
+        this.physics.addStaticBox({ x: px, y: 3.4, z: pz }, { x: 0.18, y: 3.4, z: 0.18 }, null, {
+          material: 'wood',
+          kind: 'prop',
+          penetrable: false,
+        });
       }
       poleGeos.push(makeBoxGeo(0.03, 0.03, 46, px - 0.45, 6.3, 3));
       poleGeos.push(makeBoxGeo(0.03, 0.03, 46, px + 0.45, 6.3, 3));
@@ -936,42 +952,59 @@ export class VillageBuilder {
     poles.receiveShadow = true;
     this.scene.add(poles);
 
-    // Distant multi-tier ruined outskirts silhouettes & perimeter broken yard walls (~260 tris total)
+    // Distant ruined outskirts silhouettes outside the playable perimeter
     const skyConcrete = [
       makeBoxGeo(14, 15, 10, -48, 7.5, -44, 0, 0.2, 0),
       makeBoxGeo(7, 4, 8, -46, 16.5, -44, 0, 0.2, 0),
       makeBoxGeo(16, 18, 10, 12, 9, -62, 0, 0.08, 0),
       makeBoxGeo(8, 5, 9, 10, 20.5, -62, 0, 0.08, 0),
       makeBoxGeo(13, 12, 11, 46, 6, -34, 0, -0.25, 0),
-      // Low ruined side field compound walls flanking West/East edge (fills off-avenue sightlines naturally)
-      makeBoxGeo(0.45, 1.5, 10, -23.5, 0.75, 14, 0, 0.06, 0),
-      makeBoxGeo(7.5, 1.3, 0.45, -20, 0.65, 9.2, 0, -0.05, 0),
-      makeBoxGeo(0.45, 1.6, 11, 23.5, 0.8, -4, 0, -0.04, 0),
     ];
     const skyline = new THREE.Mesh(mergeGeometries(skyConcrete, false), this.mats.concrete);
     this.scene.add(skyline);
   }
 
   _buildRubbleInstances() {
-    // InstancedMesh for 260 rubble & masonry chunks along breached walls & gutters (1 draw call!)
-    const count = 260;
+    // InstancedMesh for roadside & yard rubble chunks (filtered strictly outside buildings & central roadway!)
+    const buildingRects = [
+      { minX: -17.6, maxX: -6.8, minZ: 13.8, maxZ: 23.2 }, // House 0
+      { minX: 6.8, maxX: 17.5, minZ: 12.8, maxZ: 22.2 },   // House 1
+      { minX: -17.6, maxX: -6.8, minZ: -4.5, maxZ: 4.5 },  // House 2
+      { minX: 6.8, maxX: 17.5, minZ: -6.2, maxZ: 3.2 },    // House 3
+      { minX: -17.7, maxX: -7.3, minZ: -20.5, maxZ: -11.5 }, // House 4
+      { minX: 7.3, maxX: 17.7, minZ: -21.2, maxZ: -11.8 }, // House 5
+      { minX: -8.0, maxX: 8.0, minZ: -39.0, maxZ: -27.5 }, // 5-Story Tower
+    ];
+    const isClear = (x, z) => {
+      if (Math.abs(x) < 4.35 || (z > 4.2 && z < 11.0)) return false;
+      for (const r of buildingRects) {
+        if (x >= r.minX && x <= r.maxX && z >= r.minZ && z <= r.maxZ) return false;
+      }
+      return true;
+    };
+
+    const valid = [];
+    for (let i = 0; i < 420 && valid.length < 180; i++) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const x = side * (4.6 + ((i * 37) % 185) * 0.1);
+      const z = -37 + ((i * 53) % 72);
+      if (isClear(x, z)) valid.push({ x, z, idx: i });
+    }
+
     const geo = new THREE.DodecahedronGeometry(0.22, 0);
-    const mesh = new THREE.InstancedMesh(geo, this.mats.concrete, count);
+    const mesh = new THREE.InstancedMesh(geo, this.mats.concrete, valid.length);
     mesh.castShadow = false;
     mesh.receiveShadow = true;
 
     const dummy = new THREE.Object3D();
-    for (let i = 0; i < count; i++) {
-      const side = i % 2 === 0 ? -1 : 1;
-      const x = side * (4.1 + ((i * 37) % 135) * 0.1);
-      const z = -38 + ((i * 53) % 72);
-      dummy.position.set(x, 0.08, z);
-      dummy.rotation.set(i * 0.7, i * 1.3, i * 0.5);
-      const s = 0.55 + ((i * 19) % 10) * 0.11;
+    valid.forEach((v, i) => {
+      dummy.position.set(v.x, 0.08, v.z);
+      dummy.rotation.set(v.idx * 0.7, v.idx * 1.3, v.idx * 0.5);
+      const s = 0.52 + ((v.idx * 19) % 10) * 0.10;
       dummy.scale.set(s * 1.45, s * 0.58, s);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-    }
+    });
     mesh.instanceMatrix.needsUpdate = true;
     this.scene.add(mesh);
   }

@@ -62,6 +62,7 @@ export class DoorSystem {
       { x: width / 2, y: height / 2, z: thickness / 2 },
       { material: 'wood', kind: 'door', penetrable: true, ref: doorObj }
     );
+    body.setRotation(eulerToQuat(0, baseYaw, 0), true);
     doorObj.body = body;
     doorObj.collider = collider;
 

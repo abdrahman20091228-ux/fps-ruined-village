@@ -3,20 +3,23 @@ export const MAX_TRIANGLES = 500_000;
 
 export const QUALITY_PRESETS = {
   low: {
-    shadowSize: 1024,
-    triTarget: 180_000,
+    shadowSize: 512,
+    shadowInterval: 3,
+    triTarget: 160_000,
     lodBias: 0.72,
     drawDist: 75,
   },
   medium: {
     shadowSize: 1024,
-    triTarget: 280_000,
+    shadowInterval: 2,
+    triTarget: 260_000,
     lodBias: 1.0,
     drawDist: 92,
   },
   high: {
-    shadowSize: 1536,
-    triTarget: 400_000,
+    shadowSize: 1024,
+    shadowInterval: 1,
+    triTarget: 380_000,
     lodBias: 1.22,
     drawDist: 130,
   },
@@ -47,11 +50,11 @@ export const DIFFICULTIES = {
 };
 
 export const DEFAULT_SETTINGS = {
-  sensitivity: 2.4,
+  sensitivity: 1.6,
   gyroEnabled: true,
-  gyroSensitivity: 2.6,
+  gyroSensitivity: 1.0,
   adsHold: true,
-  resolutionScale: 0.8,
+  resolutionScale: 0.75,
   quality: 'medium',
   fpsCap: 60,
   volume: 0.8,
@@ -63,12 +66,23 @@ export const DEFAULT_SETTINGS = {
   difficulty: 'regular',
 };
 
-const STORAGE_KEY = 'ashes_of_vale_settings_v3';
+const STORAGE_KEY = 'ashes_of_vale_settings_v4';
 
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('ashes_of_vale_settings_v2');
-    if (!raw) return { ...DEFAULT_SETTINGS, customLayout: {} };
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      // Carry forward custom HUD button layout from v3 if present without keeping old harsh gyro/sens
+      const prevRaw = localStorage.getItem('ashes_of_vale_settings_v3');
+      if (prevRaw) {
+        const prev = JSON.parse(prevRaw);
+        return {
+          ...DEFAULT_SETTINGS,
+          customLayout: prev?.customLayout && typeof prev.customLayout === 'object' ? { ...prev.customLayout } : {},
+        };
+      }
+      return { ...DEFAULT_SETTINGS, customLayout: {} };
+    }
     const parsed = JSON.parse(raw);
     return {
       ...DEFAULT_SETTINGS,

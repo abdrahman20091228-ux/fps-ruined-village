@@ -18,32 +18,34 @@ export class GameEngine {
     this.renderer.toneMappingExposure = 1.22;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
+    this._shadowFrame = 0;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x768087);
     this.scene.fog = new THREE.FogExp2(0x768087, 0.0115);
 
-    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.06, 175);
+    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 175);
     this.scene.add(this.camera);
 
-    // Lightweight procedural dust-sky PMREM IBL so gunmetal/holo-optics/vehicles never crush to black
+    // Lightweight procedural dust-sky PMREM IBL for metallic weapons & vehicles
     this._initEnvironmentIBL();
 
     // Bright overcast military daylight rig: crisp hemisphere ambient + directional sun shadows
-    this.hemiLight = new THREE.HemisphereLight(0xb2c3d1, 0x665b4b, 1.0);
+    this.hemiLight = new THREE.HemisphereLight(0xc2d0dc, 0x857a6a, 1.24);
     this.scene.add(this.hemiLight);
 
-    this.sunLight = new THREE.DirectionalLight(0xffe5c6, 2.15);
+    this.sunLight = new THREE.DirectionalLight(0xffe5c6, 2.05);
     this.sunLight.position.set(22, 32, 14);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.camera.near = 6;
-    this.sunLight.shadow.camera.far = 68;
+    this.sunLight.shadow.camera.far = 66;
     const d = 20;
     this.sunLight.shadow.camera.left = -d;
     this.sunLight.shadow.camera.right = d;
     this.sunLight.shadow.camera.top = d;
     this.sunLight.shadow.camera.bottom = -d;
-    this.sunLight.shadow.bias = -0.0007;
+    this.sunLight.shadow.bias = -0.0008;
     this.scene.add(this.sunLight);
     this.scene.add(this.sunLight.target);
 
@@ -73,19 +75,16 @@ export class GameEngine {
     const h = 16;
     const data = new Uint8Array(w * h * 4);
     for (let y = 0; y < h; y++) {
-      const v = y / (h - 1); // 0 = bottom ground, 1 = top zenith (FlipY=false data)
+      const v = y / (h - 1); // 0 = bottom ground, 1 = top zenith
       let r, g, b;
       if (v > 0.55) {
-        // Sky zenith -> cool overcast steel blue
         const t = (v - 0.55) / 0.45;
         r = THREE.MathUtils.lerp(180, 145, t);
         g = THREE.MathUtils.lerp(186, 175, t);
         b = THREE.MathUtils.lerp(182, 204, t);
       } else if (v > 0.44) {
-        // Warm sun horizon rim
         r = 225; g = 208; b = 178;
       } else {
-        // Warm sandy rubble ground bounce
         const t = v / 0.44;
         r = THREE.MathUtils.lerp(72, 138, t);
         g = THREE.MathUtils.lerp(66, 126, t);
@@ -109,7 +108,7 @@ export class GameEngine {
     const envRT = pmrem.fromEquirectangular(tex);
     this.scene.environment = envRT.texture;
     if ('environmentIntensity' in this.scene) {
-      this.scene.environmentIntensity = 0.62;
+      this.scene.environmentIntensity = 0.55;
     }
     tex.dispose();
     pmrem.dispose();
@@ -139,7 +138,7 @@ export class GameEngine {
   applySettings(settings) {
     this.settings = settings;
     const preset = QUALITY_PRESETS[settings.quality] || QUALITY_PRESETS.medium;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5) * (settings.resolutionScale || 0.8);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.35) * (settings.resolutionScale || 0.75);
     this.renderer.setPixelRatio(Math.max(0.5, dpr));
 
     if (this.sunLight.shadow.mapSize.width !== preset.shadowSize) {
@@ -149,6 +148,7 @@ export class GameEngine {
         this.sunLight.shadow.map = null;
       }
     }
+    this.renderer.shadowMap.needsUpdate = true;
     this.camera.far = preset.drawDist + 30;
     this.camera.updateProjectionMatrix();
     this.resize();
@@ -208,7 +208,7 @@ export class GameEngine {
       if (!this._running) return;
       this._rafId = requestAnimationFrame(tick);
 
-      const rawDt = Math.min(0.1, (now - this._lastNow) / 1000);
+      const rawDt = Math.min(0.08, (now - this._lastNow) / 1000);
       this._lastNow = now;
       this._accumulator += rawDt;
 
@@ -220,20 +220,31 @@ export class GameEngine {
         steps++;
       }
 
-      // Timestamp-based FPS pacing (30 / 60 / 90 / 120)
+      // Timestamp-based FPS pacing (only skip frames when cap is genuinely below display rate)
       const cap = Number(this.settings.fpsCap) || 60;
-      const minFrameMs = 1000 / cap;
       const elapsedSinceRender = now - this._lastRenderNow;
-      if (elapsedSinceRender + 0.75 < minFrameMs) {
-        return;
+      if (cap < this.detectedHz - 5) {
+        const minFrameMs = 1000 / cap;
+        if (elapsedSinceRender + 2.0 < minFrameMs) {
+          return;
+        }
+        this._lastRenderNow = now - (elapsedSinceRender % minFrameMs);
+      } else {
+        this._lastRenderNow = now;
       }
-      this._lastRenderNow = now - (elapsedSinceRender % minFrameMs);
 
       const alpha = this._accumulator / FIXED_DT;
-      const renderDt = Math.min(0.1, elapsedSinceRender / 1000);
+      const renderDt = Math.min(0.08, elapsedSinceRender / 1000);
       onRenderFrame(alpha, renderDt);
 
-      // Direct backbuffer render (no costly offscreen HalfFloat RTT!) with manual stats reset
+      // Update shadow map every N frames based on quality preset for smooth mobile FPS
+      const preset = QUALITY_PRESETS[this.settings.quality] || QUALITY_PRESETS.medium;
+      const shadowInt = preset.shadowInterval || 2;
+      if (this._shadowFrame++ % shadowInt === 0) {
+        this.renderer.shadowMap.needsUpdate = true;
+      }
+
+      // Direct backbuffer render with manual stats reset
       this.renderer.info.reset();
       this.renderer.render(this.scene, this.camera);
       this.triangles = this.renderer.info.render.triangles;

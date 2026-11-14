@@ -26,7 +26,9 @@ const enemySys = new EnemySystem(engine.scene, physics, assets, effects, audio);
 
 let village = null;
 let totalEnemies = 0;
-let gameState = 'loading'; // loading | menu | playing | paused | ended
+let gameState = 'loading'; // loading | menu | intro | playing | paused | ended
+let introTime = 0;
+const INTRO_DURATION = 3.4;
 let hitStopTimer = 0;
 let hitMarkerTimer = 0;
 let damageFlashTimer = 0;
@@ -312,6 +314,19 @@ function bindUI() {
   gameState = 'menu';
   weapons.setVisible(false);
 
+  const finishIntro = () => {
+    if (gameState !== 'intro') return;
+    document.getElementById('intro-overlay').classList.add('hidden');
+    input.clearActiveInputs();
+    hud.classList.remove('hidden');
+    touchControls.classList.remove('hidden');
+    document.getElementById('btn-restart-menu').classList.remove('hidden');
+    gameState = 'playing';
+    weapons.drawTimer = 0.35;
+    weapons.setVisible(true);
+    showMissionBanner();
+  };
+
   const startPlay = async () => {
     audio.unlock();
     input.requestFullscreenLandscape();
@@ -322,6 +337,16 @@ function bindUI() {
       player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
       weapons.resetAll();
       damageHits.length = 0;
+      mainMenu.classList.add('hidden');
+      hud.classList.add('hidden');
+      touchControls.classList.add('hidden');
+      weapons.setVisible(false);
+      introTime = 0;
+      document.getElementById('intro-subtitle').textContent =
+        `${totalEnemies} HOSTILES DETECTED — BREACH HOUSES & 5-STORY TOWER`;
+      document.getElementById('intro-overlay').classList.remove('hidden');
+      gameState = 'intro';
+      return;
     }
     mainMenu.classList.add('hidden');
     hud.classList.remove('hidden');
@@ -332,12 +357,21 @@ function bindUI() {
     showMissionBanner();
   };
 
+  document.getElementById('btn-skip-intro').addEventListener('click', (e) => {
+    e.stopPropagation();
+    finishIntro();
+  });
+  document.getElementById('intro-overlay').addEventListener('click', () => {
+    if (introTime >= 0.25) finishIntro();
+  });
+
   document.getElementById('btn-deploy').addEventListener('click', startPlay);
   document.getElementById('btn-resume').addEventListener('click', startPlay);
   document.getElementById('btn-restart-menu').addEventListener('click', restartMission);
   document.getElementById('btn-restart-end').addEventListener('click', restartMission);
   document.getElementById('btn-menu-end').addEventListener('click', () => {
     document.getElementById('end-screen').classList.add('hidden');
+    document.getElementById('intro-overlay').classList.add('hidden');
     mainMenu.classList.remove('hidden');
     document.getElementById('btn-resume').classList.add('hidden');
     gameState = 'menu';
@@ -478,6 +512,15 @@ async function boot() {
   let nearestDoor = null;
   let menuOrbitAngle = 0;
 
+  const introP0 = new THREE.Vector3(7.5, 11.5, -24.0);
+  const introP1 = new THREE.Vector3(-4.5, 6.4, 3.0);
+  const introP2 = new THREE.Vector3(0.0, 1.81, 32.5);
+  const introL0 = new THREE.Vector3(-1.5, 4.8, -14.0);
+  const introL1 = new THREE.Vector3(0.0, 2.2, 6.0);
+  const introL2 = new THREE.Vector3(0.0, 1.81, 20.5);
+  const introPos = new THREE.Vector3();
+  const introLook = new THREE.Vector3();
+
   engine.startLoop(
     (dt) => {
       if (gameState !== 'playing') return;
@@ -551,6 +594,39 @@ async function boot() {
       }
 
       weapons.setVisible(gameState === 'playing');
+
+      if (gameState === 'intro') {
+        introTime += renderDt;
+        const u = Math.min(1, introTime / INTRO_DURATION);
+        // Smoothstep easing across quadratic Bezier path from tower down to player spawn
+        const t = u * u * (3 - 2 * u);
+        const omt = 1 - t;
+        introPos.set(0, 0, 0)
+          .addScaledVector(introP0, omt * omt)
+          .addScaledVector(introP1, 2 * omt * t)
+          .addScaledVector(introP2, t * t);
+        introLook.set(0, 0, 0)
+          .addScaledVector(introL0, omt * omt)
+          .addScaledVector(introL1, 2 * omt * t)
+          .addScaledVector(introL2, t * t);
+        engine.camera.position.copy(introPos);
+        engine.camera.lookAt(introLook);
+        engine.updateShadowFocus(introLook);
+        if (village) engine.enforceTriangleBudget([...village.lodObjects, ...enemySys.lodObjects]);
+
+        if (u >= 1) {
+          document.getElementById('intro-overlay').classList.add('hidden');
+          input.clearActiveInputs();
+          document.getElementById('hud').classList.remove('hidden');
+          document.getElementById('touch-controls').classList.remove('hidden');
+          document.getElementById('btn-restart-menu').classList.remove('hidden');
+          gameState = 'playing';
+          weapons.drawTimer = 0.35;
+          weapons.setVisible(true);
+          showMissionBanner();
+        }
+        return;
+      }
 
       if (gameState === 'playing') {
         // Apply touch & gyro camera rotation smoothly every render frame!

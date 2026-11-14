@@ -170,12 +170,19 @@ export class InputManager {
       this._lastDeviceQuat.copy(currQ);
 
       deltaEuler.setFromQuaternion(deltaQ, 'YXZ');
-      // High wrap threshold (1.5 rad) so fast twists never drop!
-      if (Math.abs(deltaEuler.y) > 1.5 || Math.abs(deltaEuler.x) > 1.5) return;
+      if (Math.abs(deltaEuler.y) > 1.2 || Math.abs(deltaEuler.x) > 1.2) return;
 
-      const gyroSens = (this.settings.gyroSensitivity ?? 2.6) * 1.15;
-      this.state.lookDX -= deltaEuler.y * gyroSens;
-      this.state.lookDY -= deltaEuler.x * gyroSens;
+      // Smooth MEMS deadzone & exponential filter so gyro feels silky-smooth instead of spiky!
+      const rawDY = Math.abs(deltaEuler.y) < 0.00035 ? 0 : deltaEuler.y;
+      const rawDX = Math.abs(deltaEuler.x) < 0.00035 ? 0 : deltaEuler.x;
+      const gyroSens = (this.settings.gyroSensitivity ?? 1.0) * 0.65;
+      const targetDX = -rawDY * gyroSens;
+      const targetDY = -rawDX * gyroSens;
+
+      this._gyroSmoothDX = this._gyroSmoothDX * 0.42 + targetDX * 0.58;
+      this._gyroSmoothDY = this._gyroSmoothDY * 0.42 + targetDY * 0.58;
+      this.state.lookDX += this._gyroSmoothDX;
+      this.state.lookDY += this._gyroSmoothDY;
     });
   }
 
@@ -191,6 +198,8 @@ export class InputManager {
     this._joyPointerId = null;
     this._lookPointerId = null;
     this._lastDeviceQuat = null;
+    this._gyroSmoothDX = 0;
+    this._gyroSmoothDY = 0;
     this._btnDragTrackers.clear();
     ['btn-fire', 'btn-ads', 'btn-sprint'].forEach((id) => {
       document.getElementById(id)?.classList.remove('active');
@@ -533,7 +542,7 @@ export class InputManager {
   }
 
   _applyLookDelta(rawDX, rawDY) {
-    const sens = 0.0076 * (this.settings.sensitivity || 2.4);
+    const sens = 0.0052 * (this.settings.sensitivity || 1.6);
     const dx = Math.max(-180, Math.min(180, rawDX));
     const dy = Math.max(-180, Math.min(180, rawDY));
     this.state.lookDX += dx * sens;

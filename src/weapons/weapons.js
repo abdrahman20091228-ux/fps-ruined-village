@@ -3,26 +3,27 @@ import * as THREE from 'three';
 export const WEAPON_DEFS = {
   pistol: {
     id: 'pistol',
-    name: 'M9 TACTICAL',
+    name: 'USP TACTICAL',
     auto: false,
-    rpm: 380,
-    damage: 28,
+    rpm: 390,
+    damage: 30,
     magSize: 15,
     reserveMax: 90,
-    reloadTime: 1.3,
-    penetration: 0.28,
+    reloadTime: 1.25,
+    penetration: 0.30,
     adsFov: 60,
-    spreadBase: 0.004,
-    spreadMove: 0.015,
+    spreadBase: 0.0035,
+    spreadMove: 0.014,
     recoilPattern: [
-      { p: 0.024, y: 0.004 },
-      { p: 0.027, y: -0.005 },
-      { p: 0.030, y: 0.006 },
+      { p: 0.022, y: 0.004 },
+      { p: 0.025, y: -0.004 },
+      { p: 0.028, y: 0.005 },
     ],
-    hipPos: new THREE.Vector3(0.082, -0.015, -0.085),
-    adsPos: new THREE.Vector3(0.0, 0.007, -0.072),
-    muzzleLocal: new THREE.Vector3(0, -0.025, -0.36),
-    ejectLocal: new THREE.Vector3(0.02, -0.02, -0.22),
+    hipPos: new THREE.Vector3(0.175, -0.125, -0.23),
+    adsPos: new THREE.Vector3(0.0, -0.016, -0.19),
+    hipYaw: 0.08,
+    muzzleLocal: new THREE.Vector3(0, 0.0, -0.54),
+    ejectLocal: new THREE.Vector3(0.025, 0.005, -0.28),
   },
   akm: {
     id: 'akm',
@@ -32,23 +33,24 @@ export const WEAPON_DEFS = {
     damage: 38,
     magSize: 30,
     reserveMax: 120,
-    reloadTime: 1.95,
+    reloadTime: 1.85,
     penetration: 0.65,
     adsFov: 52,
     spreadBase: 0.005,
-    spreadMove: 0.024,
+    spreadMove: 0.023,
     recoilPattern: [
-      { p: 0.026, y: 0.003 },
-      { p: 0.032, y: 0.007 },
-      { p: 0.035, y: -0.006 },
-      { p: 0.038, y: 0.010 },
-      { p: 0.034, y: -0.011 },
-      { p: 0.039, y: 0.013 },
+      { p: 0.025, y: 0.003 },
+      { p: 0.031, y: 0.007 },
+      { p: 0.034, y: -0.006 },
+      { p: 0.037, y: 0.009 },
+      { p: 0.033, y: -0.010 },
+      { p: 0.038, y: 0.012 },
     ],
-    hipPos: new THREE.Vector3(0.112, -0.072, -0.06),
-    adsPos: new THREE.Vector3(0.0, -0.062, -0.045),
-    muzzleLocal: new THREE.Vector3(0, 0.015, -0.74),
-    ejectLocal: new THREE.Vector3(0.03, 0.0, -0.14),
+    hipPos: new THREE.Vector3(0.19, -0.13, -0.30),
+    adsPos: new THREE.Vector3(0.0, -0.018, -0.22),
+    hipYaw: 0.08,
+    muzzleLocal: new THREE.Vector3(0, -0.035, -0.78),
+    ejectLocal: new THREE.Vector3(0.035, -0.02, -0.32),
   },
   m4: {
     id: 'm4',
@@ -58,22 +60,23 @@ export const WEAPON_DEFS = {
     damage: 31,
     magSize: 30,
     reserveMax: 150,
-    reloadTime: 1.55,
+    reloadTime: 1.5,
     penetration: 0.52,
     adsFov: 50,
     spreadBase: 0.003,
-    spreadMove: 0.017,
+    spreadMove: 0.016,
     recoilPattern: [
-      { p: 0.018, y: 0.002 },
+      { p: 0.017, y: 0.002 },
+      { p: 0.020, y: -0.004 },
+      { p: 0.023, y: 0.004 },
       { p: 0.021, y: -0.004 },
-      { p: 0.024, y: 0.005 },
-      { p: 0.022, y: -0.005 },
-      { p: 0.025, y: 0.004 },
+      { p: 0.024, y: 0.003 },
     ],
-    hipPos: new THREE.Vector3(0.105, -0.052, -0.05),
-    adsPos: new THREE.Vector3(0.0, 0.014, -0.045),
-    muzzleLocal: new THREE.Vector3(0, -0.08, -0.65),
-    ejectLocal: new THREE.Vector3(0.03, -0.06, -0.22),
+    hipPos: new THREE.Vector3(0.19, -0.13, -0.30),
+    adsPos: new THREE.Vector3(0.0, -0.030, -0.22),
+    hipYaw: 0.08,
+    muzzleLocal: new THREE.Vector3(0, -0.035, -0.76),
+    ejectLocal: new THREE.Vector3(0.035, -0.02, -0.34),
   },
 };
 
@@ -81,42 +84,73 @@ const ORDER = ['m4', 'akm', 'pistol'];
 
 function createHoloOptic() {
   const grp = new THREE.Group();
-  const housingMat = new THREE.MeshStandardMaterial({ color: 0x262a2f, roughness: 0.42, metalness: 0.55 });
-  // Low-profile Picatinny riser + open EOTech reflex window clearly above the M4 rear iron sight!
-  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.016, 0.068), housingMat);
-  riser.position.set(0, -0.010, 0);
-  const base = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.007, 0.072), housingMat);
+  const housingMat = new THREE.MeshStandardMaterial({ color: 0x383e45, roughness: 0.42, metalness: 0.35 });
+  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.008, 0.048), housingMat);
+  riser.position.set(0, -0.004, 0);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.005, 0.054), housingMat);
   base.position.set(0, 0.001, 0);
 
-  const leftPost = new THREE.Mesh(new THREE.BoxGeometry(0.0035, 0.028, 0.034), housingMat);
-  leftPost.position.set(-0.0185, 0.018, -0.002);
-  const rightPost = new THREE.Mesh(new THREE.BoxGeometry(0.0035, 0.028, 0.034), housingMat);
-  rightPost.position.set(0.0185, 0.018, -0.002);
-  const hoodTop = new THREE.Mesh(new THREE.BoxGeometry(0.0405, 0.0035, 0.036), housingMat);
-  hoodTop.position.set(0, 0.032, -0.002);
+  const leftPost = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.022, 0.028), housingMat);
+  leftPost.position.set(-0.016, 0.014, -0.002);
+  const rightPost = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.022, 0.028), housingMat);
+  rightPost.position.set(0.016, 0.014, -0.002);
+  const hoodTop = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.003, 0.030), housingMat);
+  hoodTop.position.set(0, 0.026, -0.002);
 
   const glass = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.034, 0.025),
-    new THREE.MeshBasicMaterial({ color: 0x62b8c9, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false })
+    new THREE.PlaneGeometry(0.028, 0.020),
+    new THREE.MeshBasicMaterial({ color: 0x62b8c9, transparent: true, opacity: 0.16, side: THREE.DoubleSide, depthWrite: false })
   );
-  glass.position.set(0, 0.018, -0.002);
+  glass.position.set(0, 0.014, -0.002);
 
-  // Sharp glowing holographic red dot + outer tactical ring centered at y = -0.014 in weapon space
   const reticle = new THREE.Mesh(
-    new THREE.SphereGeometry(0.0011, 8, 8),
+    new THREE.SphereGeometry(0.0010, 6, 6),
     new THREE.MeshBasicMaterial({ color: 0xff3b2f })
   );
-  reticle.position.set(0, 0.018, -0.004);
+  reticle.position.set(0, 0.014, -0.004);
 
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.0046, 0.0056, 18),
-    new THREE.MeshBasicMaterial({ color: 0xff4c3d, transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false })
+    new THREE.RingGeometry(0.0040, 0.0050, 16),
+    new THREE.MeshBasicMaterial({ color: 0xff4c3d, transparent: true, opacity: 0.78, side: THREE.DoubleSide, depthWrite: false })
   );
-  ring.position.set(0, 0.018, -0.004);
+  ring.position.set(0, 0.014, -0.004);
 
   grp.add(riser, base, leftPost, rightPost, hoodTop, glass, reticle, ring);
-  // Placed over forward receiver rail (-0.155) cleanly ahead of the built-in rear sight hump!
-  grp.position.set(0, -0.032, -0.155);
+  // Seated flush forward of M4 rear iron ears atop receiver rail
+  grp.position.set(0, 0.016, -0.165);
+  return grp;
+}
+
+function createTacticalHands(id) {
+  const grp = new THREE.Group();
+  const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x3d4635 });
+  const gloveMat = new THREE.MeshLambertMaterial({ color: 0x222529 });
+  const knuckleMat = new THREE.MeshLambertMaterial({ color: 0x35393e });
+
+  const addArm = (glovePos, armEndPos) => {
+    const glove = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.040, 0.056), gloveMat);
+    glove.position.copy(glovePos);
+    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.013, 0.024), knuckleMat);
+    knuckle.position.set(glovePos.x, glovePos.y + 0.014, glovePos.z - 0.006);
+
+    const armDir = new THREE.Vector3().subVectors(armEndPos, glovePos);
+    const len = armDir.length();
+    const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.027, len, 7), sleeveMat);
+    sleeve.position.copy(glovePos).addScaledVector(armDir, 0.5);
+    sleeve.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), armDir.normalize());
+
+    grp.add(glove, knuckle, sleeve);
+  };
+
+  if (id === 'pistol') {
+    // Two-handed Weaver pistol grip tucked naturally at bottom corners
+    addArm(new THREE.Vector3(0.004, -0.068, -0.16), new THREE.Vector3(0.18, -0.25, 0.10));
+    addArm(new THREE.Vector3(-0.020, -0.074, -0.18), new THREE.Vector3(-0.22, -0.26, 0.08));
+  } else {
+    // Right trigger hand + Left support hand sweeping cleanly from bottom-left under handguard
+    addArm(new THREE.Vector3(0.005, -0.128, -0.07), new THREE.Vector3(0.16, -0.27, 0.16));
+    addArm(new THREE.Vector3(-0.014, -0.132, -0.32), new THREE.Vector3(-0.25, -0.22, -0.02));
+  }
   return grp;
 }
 
@@ -128,11 +162,10 @@ export class WeaponSystem {
     this.audio = audio;
 
     this.viewmodelRoot = new THREE.Group();
-    this.viewmodelRoot.visible = false; // Hidden on load/menu until actively playing!
+    this.viewmodelRoot.visible = false;
     this.camera.add(this.viewmodelRoot);
 
     this.weaponMeshes = {};
-    this.weaponMags = {};
     this.fallbackRoot = new THREE.Group();
     this.viewmodelRoot.add(this.fallbackRoot);
 
@@ -156,12 +189,17 @@ export class WeaponSystem {
     this._triggerHeld = false;
     this._emptyCooldown = 0;
 
-    // Spring-based camera kick
     this.recoilPitch = 0;
     this.recoilYaw = 0;
     this.recoilVelP = 0;
     this.recoilVelY = 0;
     this.shakeTime = 0;
+
+    this._vPos = new THREE.Vector3();
+    this._vMuzzleW = new THREE.Vector3();
+    this._vEjectW = new THREE.Vector3();
+    this._vRight = new THREE.Vector3();
+    this._vUp = new THREE.Vector3();
 
     this._buildDefaultViewmodels();
     this.equip(ORDER[this.currentIndex]);
@@ -203,7 +241,6 @@ export class WeaponSystem {
     const woodStock = new THREE.MeshStandardMaterial({ color: 0x624127, roughness: 0.8 });
     const polymer = new THREE.MeshStandardMaterial({ color: 0x26292d, roughness: 0.62, metalness: 0.2 });
 
-    // Muzzle flash sprite (additive warm star flare)
     const flashMat = new THREE.SpriteMaterial({
       color: 0xffd578,
       transparent: true,
@@ -212,8 +249,8 @@ export class WeaponSystem {
       depthWrite: false,
     });
     this.muzzleFlashSprite = new THREE.Sprite(flashMat);
-    this.muzzleFlashSprite.scale.set(0.18, 0.18, 1);
-    this.muzzleFlashSprite.position.set(0, -0.05, -0.58);
+    this.muzzleFlashSprite.scale.set(0.14, 0.14, 1);
+    this.muzzleFlashSprite.position.set(0, -0.03, -0.58);
     this.viewmodelRoot.add(this.muzzleFlashSprite);
 
     const makeFallback = (len, bodyColor) => {
@@ -245,45 +282,43 @@ export class WeaponSystem {
         c.frustumCulled = false;
         if (c.material) {
           c.material = c.material.clone();
-          // Ensure metallic PBR reads crisply outdoors with our procedural sky IBL
-          c.material.roughness = Math.max(0.36, c.material.roughness ?? 0.52);
-          c.material.metalness = Math.min(0.42, c.material.metalness ?? 0.25);
-          if (id !== 'akm' && c.material.name === 'M_GunMetal') {
-            c.material.color.setHex(0x4b535d);
-          }
+          c.material.roughness = Math.max(0.38, c.material.roughness ?? 0.50);
+          c.material.metalness = Math.min(0.40, c.material.metalness ?? 0.28);
         }
       }
     });
 
     if (id === 'm4') {
+      cloned.scale.setScalar(0.85);
+      cloned.position.set(0, -0.195, 0);
       wrapper.add(createHoloOptic());
+    } else if (id === 'akm') {
+      cloned.scale.setScalar(0.85);
+      cloned.position.set(0, -0.20, 0);
+      const frontGlow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.0024, 0.006, 0.004),
+        new THREE.MeshBasicMaterial({ color: 0x7eff7a })
+      );
+      frontGlow.position.set(0, 0.024, -0.46);
+      wrapper.add(frontGlow);
     } else if (id === 'pistol') {
-      // Bright green/white tritium 3-dot pistol sights aligned with slide top
+      cloned.scale.setScalar(1.38);
+      cloned.position.set(0, -0.068, -0.155);
       const frontDot = new THREE.Mesh(
         new THREE.BoxGeometry(0.0024, 0.0032, 0.004),
         new THREE.MeshBasicMaterial({ color: 0x62ff7a })
       );
-      frontDot.position.set(0, -0.011, -0.342);
+      frontDot.position.set(0, 0.025, -0.32);
       const rearMat = new THREE.MeshBasicMaterial({ color: 0xf4f0e4 });
       const rearL = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.0028, 0.003), rearMat);
-      rearL.position.set(-0.0055, -0.011, -0.175);
+      rearL.position.set(-0.0055, 0.025, -0.145);
       const rearR = new THREE.Mesh(new THREE.BoxGeometry(0.002, 0.0028, 0.003), rearMat);
-      rearR.position.set(0.0055, -0.011, -0.175);
+      rearR.position.set(0.0055, 0.025, -0.145);
       wrapper.add(frontDot, rearL, rearR);
-    } else if (id === 'akm') {
-      const magNode = cloned.getObjectByName('Mag');
-      if (magNode) {
-        this.weaponMags.akm = { node: magNode, basePos: magNode.position.clone(), baseRot: magNode.rotation.clone() };
-      }
-      const frontGlow = new THREE.Mesh(
-        new THREE.BoxGeometry(0.0026, 0.0065, 0.004),
-        new THREE.MeshBasicMaterial({ color: 0x7eff7a })
-      );
-      frontGlow.position.set(0, 0.068, -0.695);
-      wrapper.add(frontGlow);
     }
 
     wrapper.add(cloned);
+    wrapper.add(createTacticalHands(id));
     wrapper.visible = id === this.activeDef.id;
     this.weaponMeshes[id] = wrapper;
     this.viewmodelRoot.add(wrapper);
@@ -294,10 +329,6 @@ export class WeaponSystem {
     this.reloadTimer = 0;
     this.drawTimer = 0.24;
     this.shotIndex = 0;
-    if (this.weaponMags.akm) {
-      this.weaponMags.akm.node.position.copy(this.weaponMags.akm.basePos);
-      this.weaponMags.akm.node.rotation.copy(this.weaponMags.akm.baseRot);
-    }
     for (const [k, mesh] of Object.entries(this.weaponMeshes)) {
       mesh.visible = k === id;
     }
@@ -325,10 +356,6 @@ export class WeaponSystem {
     st.mag += take;
     st.reserve -= take;
     this.isReloading = false;
-    if (this.weaponMags.akm) {
-      this.weaponMags.akm.node.position.copy(this.weaponMags.akm.basePos);
-      this.weaponMags.akm.node.rotation.copy(this.weaponMags.akm.baseRot);
-    }
   }
 
   update(dt, cmd, player, onHitEnemy, onHitMarker) {
@@ -365,7 +392,6 @@ export class WeaponSystem {
       this.shotIndex = Math.max(0, this.shotIndex - dt * 6);
     }
 
-    // Spring-based camera recoil recovery
     const stiffness = 68;
     const damping = 14.5;
     this.recoilVelP += (-stiffness * this.recoilPitch - damping * this.recoilVelP) * dt;
@@ -377,13 +403,12 @@ export class WeaponSystem {
 
     if (this.shakeTime > 0) {
       this.shakeTime -= dt;
-      const amp = 0.011 * (this.shakeTime / 0.09);
+      const amp = 0.010 * (this.shakeTime / 0.09);
       player.shakeOffset.set((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp, 0);
     } else {
       player.shakeOffset.set(0, 0, 0);
     }
 
-    // Viewmodel ADS + Sprint + Draw + Multi-Stage Reload Animation
     const targetAds = cmd.ads && !this.isReloading ? 1 : 0;
     const targetSprint = player.isSprinting && !this.isReloading && !cmd.ads ? 1 : 0;
     this.adsBlend += (targetAds - this.adsBlend) * Math.min(1, dt * 15);
@@ -397,38 +422,32 @@ export class WeaponSystem {
       this.camera.updateProjectionMatrix();
     }
 
-    const pos = new THREE.Vector3().lerpVectors(def.hipPos, def.adsPos, this.adsBlend);
-    const sway = Math.sin(player.bobPhase) * (player.isSprinting ? 0.014 : 0.004) * (1 - this.adsBlend * 0.78);
-    const swayY = Math.abs(Math.cos(player.bobPhase)) * (player.isSprinting ? 0.012 : 0.003) * (1 - this.adsBlend * 0.78);
+    this._vPos.lerpVectors(def.hipPos, def.adsPos, this.adsBlend);
+    const sway = Math.sin(player.bobPhase) * (player.isSprinting ? 0.012 : 0.0035) * (1 - this.adsBlend * 0.78);
+    const swayY = Math.abs(Math.cos(player.bobPhase)) * (player.isSprinting ? 0.010 : 0.0028) * (1 - this.adsBlend * 0.78);
     const drawDrop = (this.drawTimer / 0.24) * 0.16;
 
-    // Multi-stage reload motion curve + AKM detachable mag pull!
     let rDrop = 0;
     let rRotX = 0;
     let rRotZ = 0;
     if (this.isReloading) {
       const p = 1 - Math.max(0, this.reloadTimer / def.reloadTime);
       const lift = Math.sin(p * Math.PI);
-      rDrop = lift * 0.08;
-      rRotX = -0.32 * lift;
-      rRotZ = 0.46 * lift;
-      if (def.id === 'akm' && this.weaponMags.akm) {
-        const magPull = p < 0.5 ? p * 2 : (1 - p) * 2;
-        const mag = this.weaponMags.akm;
-        mag.node.position.set(mag.basePos.x, mag.basePos.y - magPull * 0.22, mag.basePos.z + magPull * 0.06);
-        mag.node.rotation.x = mag.baseRot.x + magPull * 0.35;
-      }
+      rDrop = lift * 0.09;
+      rRotX = -0.34 * lift;
+      rRotZ = 0.44 * lift;
     }
 
+    const hipYaw = (def.hipYaw || 0) * (1 - this.adsBlend);
     this.viewmodelRoot.position.set(
-      pos.x + sway + this.sprintBlend * -0.04,
-      pos.y - swayY - drawDrop - rDrop - this.sprintBlend * 0.045,
-      pos.z + this.kickZ + this.sprintBlend * 0.03
+      this._vPos.x + sway + this.sprintBlend * -0.04,
+      this._vPos.y - swayY - drawDrop - rDrop - this.sprintBlend * 0.04,
+      this._vPos.z + this.kickZ + this.sprintBlend * 0.025
     );
     this.viewmodelRoot.rotation.set(
-      this.kickRotX + rRotX - drawDrop * 1.4 - this.sprintBlend * 0.22,
-      this.sprintBlend * 0.36,
-      rRotZ + this.sprintBlend * 0.28
+      this.kickRotX + rRotX - drawDrop * 1.4 - this.sprintBlend * 0.20,
+      hipYaw + this.sprintBlend * 0.34,
+      rRotZ + this.sprintBlend * 0.26
     );
 
     if (this.muzzleFlashSprite.material.opacity > 0) {
@@ -447,22 +466,21 @@ export class WeaponSystem {
     const adsScale = 1 - this.adsBlend * 0.38;
     this.recoilPitch += pat.p * adsScale;
     this.recoilYaw += pat.y * adsScale;
-    this.kickZ = 0.048;
-    this.kickRotX = 0.095;
-    this.shakeTime = 0.085;
+    this.kickZ = 0.042;
+    this.kickRotX = 0.085;
+    this.shakeTime = 0.08;
 
-    // Update muzzle sprite right at real weapon barrel tip
-    this.muzzleFlashSprite.position.copy(def.muzzleLocal).add(this.weaponMeshes[def.id].position);
-    this.muzzleFlashSprite.material.opacity = 0.96;
+    this.muzzleFlashSprite.position.copy(def.muzzleLocal);
+    this.muzzleFlashSprite.material.opacity = 0.92;
     this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
 
-    const muzzleWorld = def.muzzleLocal.clone().applyMatrix4(this.viewmodelRoot.matrixWorld);
-    this.effects.triggerMuzzleFlash(muzzleWorld);
+    this._vMuzzleW.copy(def.muzzleLocal).applyMatrix4(this.viewmodelRoot.matrixWorld);
+    this.effects.triggerMuzzleFlash(this._vMuzzleW);
 
-    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
-    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
-    const ejectWorld = def.ejectLocal.clone().applyMatrix4(this.viewmodelRoot.matrixWorld);
-    this.effects.spawnCasing(ejectWorld, camRight, camUp);
+    this._vRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    this._vUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    this._vEjectW.copy(def.ejectLocal).applyMatrix4(this.viewmodelRoot.matrixWorld);
+    this.effects.spawnCasing(this._vEjectW, this._vRight, this._vUp);
     this.audio.playShot(def.id, null, true);
 
     const origin = this.camera.position.clone();
@@ -519,6 +537,6 @@ export class WeaponSystem {
       }
     }
 
-    this.effects.spawnTracer(muzzleWorld, finalHitPoint);
+    this.effects.spawnTracer(this._vMuzzleW, finalHitPoint);
   }
 }

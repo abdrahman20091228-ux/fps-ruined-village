@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T11:47:47.118Z",
-  "totalBytes": 5145977,
+  "generatedAt": "2026-11-14T05:03:04.801Z",
+  "totalBytes": 6984349,
   "fileCount": 63,
   "categories": {
-    "code": 213233,
-    "models": 2751968,
+    "code": 212353,
+    "models": 4591220,
     "textures": 2023082,
     "audio": 157694
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 30886,
+      "size": 22579,
       "category": "code"
     },
     {
@@ -27,12 +27,12 @@
     },
     {
       "path": "src/core/config.js",
-      "size": 1910,
+      "size": 2363,
       "category": "code"
     },
     {
       "path": "src/core/engine.js",
-      "size": 8832,
+      "size": 9241,
       "category": "code"
     },
     {
@@ -42,17 +42,17 @@
     },
     {
       "path": "src/fx/effects.js",
-      "size": 7746,
+      "size": 7753,
       "category": "code"
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 21802,
+      "size": 22253,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 24394,
+      "size": 27449,
       "category": "code"
     },
     {
@@ -62,22 +62,22 @@
     },
     {
       "path": "src/styles.css",
-      "size": 19542,
+      "size": 20706,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 18012,
+      "size": 18327,
       "category": "code"
     },
     {
       "path": "src/world/doors.js",
-      "size": 3289,
+      "size": 3345,
       "category": "code"
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 45772,
+      "size": 47289,
       "category": "code"
     },
     {
@@ -152,7 +152,7 @@
     },
     {
       "path": "assets/models/akm.glb",
-      "size": 97876,
+      "size": 27076,
       "category": "models"
     },
     {
@@ -182,22 +182,22 @@
     },
     {
       "path": "assets/models/enemy_fighter.glb",
-      "size": 413996,
+      "size": 1093384,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_militia.glb",
-      "size": 420512,
+      "size": 935288,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_soldier.glb",
-      "size": 422784,
+      "size": 943684,
       "category": "models"
     },
     {
       "path": "assets/models/enemy_swat.glb",
-      "size": 425568,
+      "size": 903048,
       "category": "models"
     },
     {
@@ -212,7 +212,7 @@
     },
     {
       "path": "assets/models/m4.glb",
-      "size": 167852,
+      "size": 22888,
       "category": "models"
     },
     {
@@ -232,7 +232,7 @@
     },
     {
       "path": "assets/models/pistol.glb",
-      "size": 163284,
+      "size": 25756,
       "category": "models"
     },
     {
