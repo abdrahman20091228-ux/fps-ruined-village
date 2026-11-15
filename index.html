@@ -46,7 +46,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="screen-overlay">
     <div class="loading-panel">
-      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V6</div>
+      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V7</div>
       <h1 class="game-title">ASHES OF VALE</h1>
       <p class="subtitle">WOODLAND VILLAGE &amp; MULTI-STORY ASSAULT</p>
 
@@ -74,66 +74,92 @@
     </div>
   </div>
 
-  <!-- Main Menu -->
+  <!-- Redesigned AAA Tactical Mobile FPS Lobby (Landscape-First, 3D Orbit Center) -->
   <div id="main-menu" class="screen-overlay hidden">
-    <div class="menu-shell">
-      <div class="menu-left">
-        <div class="mission-tag">OPERATION: ASHEN THRESHOLD // TACTICAL V6</div>
-        <h1 class="menu-title">ASHES OF VALE</h1>
-        <p class="menu-brief">
-          Push up the cobblestone street through the pine-lined village, climb staircases to clear 2-story homes, and assault all 5 floors of the ruined apartment tower. Track contacts on the Threat Radar &amp; collect Medkits or Ammo Crates.
-        </p>
-
-        <div class="menu-section">
-          <div class="section-label">DIFFICULTY</div>
-          <div class="segmented-group" id="difficulty-selector">
-            <button class="seg-btn" data-diff="recruit">RECRUIT</button>
-            <button class="seg-btn active" data-diff="regular">REGULAR</button>
-            <button class="seg-btn" data-diff="veteran">VETERAN</button>
-          </div>
+    <div class="lobby-shell">
+      <header class="lobby-topbar">
+        <div class="lobby-brand">
+          <div class="mission-tag">OPERATION: ASHEN THRESHOLD // V7</div>
+          <h1 class="lobby-title">ASHES OF VALE</h1>
         </div>
 
-        <div class="menu-actions">
-          <button id="btn-deploy" class="btn-tactical btn-primary btn-lg">
-            <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
-            DEPLOY TO VILLAGE
+        <div class="lobby-toolbar">
+          <span id="menu-cache-badge" class="lobby-status-pill">Cache verified</span>
+          <button id="btn-quick-gyro" class="lobby-pill-btn" type="button" title="Cycle Gyro Mode">
+            <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/><ellipse cx="12" cy="12" rx="8" ry="3.2" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="1.5" fill="#c99b42"/></svg>
+            <span id="quick-gyro-label">GYRO: ON</span>
           </button>
-          <div class="menu-row-secondary">
-            <button id="btn-resume" class="btn-tactical hidden">
-              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><polygon points="6,4 20,12 6,20" fill="currentColor"/></svg>
-              RESUME
-            </button>
-            <button id="btn-restart-menu" class="btn-tactical hidden">
-              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              RESTART
-            </button>
-            <button id="btn-open-settings" class="btn-tactical">
-              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v2.5M12 19v2.5M4.5 12H2M22 12h-2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
-              SETTINGS
-            </button>
-            <button id="btn-open-loadout" class="btn-tactical">
-              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M3 11h14l3 2v3h-3l-2-2H8l-2 3H3v-6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 11V8h5v3" stroke="currentColor" stroke-width="1.8"/></svg>
-              ARSENAL &amp; INTEL
-            </button>
-          </div>
+          <button id="btn-open-loadout" class="btn-tactical" type="button">
+            <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M3 11h14l3 2v3h-3l-2-2H8l-2 3H3v-6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M10 11V8h5v3" stroke="currentColor" stroke-width="1.8"/></svg>
+            ARSENAL
+          </button>
+          <button id="btn-open-settings" class="btn-tactical" type="button">
+            <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.9"/><path d="M12 2.5v2.5M12 19v2.5M4.5 12H2M22 12h-2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M18.7 5.3l-1.8 1.8M7.1 16.9l-1.8 1.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>
+            SETTINGS
+          </button>
         </div>
-      </div>
+      </header>
 
-      <div class="menu-right">
-        <div class="intel-card">
-          <div class="intel-header">
-            <span>TACTICAL BRIEFING</span>
-            <span class="intel-status">READY</span>
+      <div class="lobby-bottom">
+        <section class="lobby-dock-left">
+          <div class="dock-block">
+            <div class="section-label">PRIMARY DEPLOYMENT LOADOUT</div>
+            <div class="weapon-selector" id="weapon-selector">
+              <button class="weapon-card active" data-weapon="m4" type="button">
+                <span class="wc-name">M4 HOLO</span>
+                <span class="wc-sub">5.56 • OPTIC</span>
+              </button>
+              <button class="weapon-card" data-weapon="akm" type="button">
+                <span class="wc-name">AKM 7.62</span>
+                <span class="wc-sub">HEAVY AUTO</span>
+              </button>
+              <button class="weapon-card" data-weapon="pistol" type="button">
+                <span class="wc-name">M9 TACTICAL</span>
+                <span class="wc-sub">9MM • AGILE</span>
+              </button>
+            </div>
           </div>
-          <ul class="intel-list">
-            <li><span>OBJECTIVE</span><strong>Eliminate All 12 Hostiles</strong></li>
-            <li><span>VERTICALITY</span><strong>2-Story Homes &amp; 5-Story Tower</strong></li>
-            <li><span>MOVEMENT</span><strong>PUBG Joystick + Sprint Lock</strong></li>
-            <li><span>ARSENAL</span><strong>M4 Holo • AKM • M9 Tactical</strong></li>
-            <li><span>TRIGGER</span><strong>Fire Button + ADS Drag + Gyro</strong></li>
-          </ul>
-          <div id="menu-cache-badge" class="cache-badge">Cache verified</div>
-        </div>
+
+          <div class="dock-block">
+            <div class="section-label">COMBAT DIFFICULTY</div>
+            <div class="segmented-group" id="difficulty-selector">
+              <button class="seg-btn" data-diff="recruit" type="button">RECRUIT</button>
+              <button class="seg-btn active" data-diff="regular" type="button">REGULAR</button>
+              <button class="seg-btn" data-diff="veteran" type="button">VETERAN</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="lobby-dock-right">
+          <div class="lobby-mission-card">
+            <div class="lm-top">
+              <span class="lm-tag">SECTOR 04 // VILLAGE ASSAULT</span>
+              <span class="lm-live">READY</span>
+            </div>
+            <div class="lm-metrics">
+              <span><strong>12</strong> Hostiles</span>
+              <span><strong>5F</strong> Ruined Tower</span>
+              <span><strong>2F</strong> Breach Homes</span>
+            </div>
+          </div>
+
+          <div class="lobby-cta-stack">
+            <button id="btn-deploy" class="btn-tactical btn-primary btn-deploy" type="button">
+              <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+              DEPLOY TO VILLAGE
+            </button>
+            <div class="lobby-pause-row" id="lobby-pause-row">
+              <button id="btn-resume" class="btn-tactical btn-primary hidden" type="button">
+                <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><polygon points="6,4 20,12 6,20" fill="currentColor"/></svg>
+                RESUME
+              </button>
+              <button id="btn-restart-menu" class="btn-tactical hidden" type="button">
+                <svg class="ui-svg" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M4 4v5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                RESTART
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -161,8 +187,8 @@
           <p>Crisp 3-dot luminous tritium sights, fast draw &amp; ADS agility, 15-round mag.</p>
         </div>
         <div class="weapon-spec">
-          <h3>PUBG SPRINT &amp; CLEAN FIRE</h3>
-          <p>Push left stick forward to sprint, or slide to the top latch to lock Sprint! Fire button strictly shoots with zero aim drift; drag screen or ADS to track targets alongside smooth MEMS Gyro.</p>
+          <h3>PUBG SPRINT &amp; CLEAN GYRO AIM</h3>
+          <p>Push left stick forward to sprint, or slide to the top latch to lock Sprint! Fire button strictly shoots with zero aim drift; use ADS drag &amp; screen-frame MEMS Gyroscope (full yaw + pitch) for precision tracking.</p>
         </div>
       </div>
     </div>
@@ -183,12 +209,28 @@
           <input id="set-sensitivity" type="range" min="0.4" max="4.0" step="0.1" value="1.6" />
         </label>
         <label class="setting-row">
+          <span>ADS Aim Sensitivity <strong id="val-ads-sens">0.75</strong></span>
+          <input id="set-ads-sens" type="range" min="0.3" max="1.5" step="0.05" value="0.75" />
+        </label>
+        <label class="setting-row">
+          <span>Gyroscope Mode <small id="gyro-status-text" class="hz-note"></small></span>
+          <select id="set-gyro-mode">
+            <option value="always" selected>Always On (Screen MEMS)</option>
+            <option value="ads">ADS / Scope Only</option>
+            <option value="off">Disabled</option>
+          </select>
+        </label>
+        <label class="setting-row">
           <span>Gyroscope Sensitivity <strong id="val-gyro-sens">1.0</strong></span>
           <input id="set-gyro-sens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" />
         </label>
         <label class="setting-row setting-toggle">
-          <span>Gyroscope Aiming (Smooth MEMS)</span>
-          <input id="set-gyro-enabled" type="checkbox" checked />
+          <span>Invert Gyro Pitch (Up/Down)</span>
+          <input id="set-gyro-invert-y" type="checkbox" />
+        </label>
+        <label class="setting-row setting-toggle">
+          <span>Swap Gyro Yaw/Pitch Axes</span>
+          <input id="set-gyro-swap-axes" type="checkbox" />
         </label>
         <label class="setting-row setting-toggle">
           <span>Hold ADS (Release to Exit)</span>
@@ -232,8 +274,9 @@
           <input id="set-debug" type="checkbox" checked />
         </label>
         <div class="setting-actions">
-          <button id="btn-open-hud-editor" class="btn-tactical btn-primary">CUSTOMIZE HUD BUTTONS</button>
-          <button id="btn-clear-cache" class="btn-tactical">CLEAR OFFLINE CACHE</button>
+          <button id="btn-calibrate-gyro" class="btn-tactical" type="button">CALIBRATE GYRO</button>
+          <button id="btn-open-hud-editor" class="btn-tactical btn-primary" type="button">CUSTOMIZE HUD BUTTONS</button>
+          <button id="btn-clear-cache" class="btn-tactical" type="button">CLEAR OFFLINE CACHE</button>
           <span id="cache-clear-status" class="cache-note"></span>
         </div>
       </div>
@@ -319,7 +362,7 @@
     <div id="mission-banner" class="hidden">ELIMINATE 12 HOSTILES — CLEAR HOUSES &amp; 5-STORY TOWER</div>
     <div id="medkit-toast" class="hidden">+35 HP // MEDKIT</div>
 
-    <!-- Dynamic Center Crosshair & Hit Marker -->
+    <!-- Dynamic Center Crosshair, Reload Bar & Hit Marker -->
     <div id="crosshair">
       <div class="ch-line ch-top"></div>
       <div class="ch-line ch-bottom"></div>
@@ -327,6 +370,10 @@
       <div class="ch-line ch-right"></div>
       <div class="ch-dot"></div>
       <div id="hit-marker" class="hidden"></div>
+    </div>
+    <div id="reload-pill" class="hidden">
+      <span class="reload-label">RELOADING</span>
+      <div class="reload-track"><div id="reload-fill"></div></div>
     </div>
 
     <div id="damage-vignette"></div>

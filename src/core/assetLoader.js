@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
-const CACHE_NAME = 'ashes-of-vale-assets-v6';
+const CACHE_NAME = 'ashes-of-vale-assets-v8';
 
 export class AssetLoader {
   constructor() {
@@ -30,7 +30,7 @@ export class AssetLoader {
     }
     const keys = await caches.keys();
     for (const k of keys) {
-      if (k.startsWith('ashes-of-vale-') && k !== CACHE_NAME) {
+      if (k.startsWith('ashes-of-vale-assets-') && k !== CACHE_NAME) {
         await caches.delete(k);
       }
     }
@@ -54,72 +54,105 @@ export class AssetLoader {
 
   async clearCache() {
     if ('caches' in window) {
-      await caches.delete(CACHE_NAME);
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k.startsWith('ashes-of-vale-')).map((k) => caches.delete(k)));
     }
+    this.releaseTransientCache();
+  }
+
+  releaseTransientCache() {
+    for (const url of this.objectUrls.values()) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore
+      }
+    }
+    this.objectUrls.clear();
     this.blobs.clear();
   }
 
   async loadAllFromManifest(manifest, cachedPaths, onProgress) {
     const cache = 'caches' in window ? await caches.open(CACHE_NAME) : null;
-    let loadedBytes = 0;
     const totalBytes = Math.max(1, manifest.totalBytes);
+    const fileProgress = new Float64Array(manifest.files.length);
+    let lastFile = '';
+    const emitProgress = (path) => {
+      if (path) lastFile = path;
+      let sum = 0;
+      for (let i = 0; i < fileProgress.length; i++) sum += fileProgress[i];
+      onProgress?.(Math.min(totalBytes, sum), totalBytes, lastFile);
+    };
 
-    // Count already cached bytes first or stream them into memory quickly
-    for (const file of manifest.files) {
-      const url = `./${file.path}`;
-      let blob = null;
+    const queue = manifest.files.map((file, idx) => ({ file, idx }));
+    const concurrency = 6;
 
-      if (cache && cachedPaths.has(file.path)) {
-        const cachedResp = await cache.match(url);
-        if (cachedResp && Number(cachedResp.headers.get('X-Asset-Size')) === file.size) {
-          blob = await cachedResp.blob();
-          loadedBytes += file.size;
-          onProgress?.(loadedBytes, totalBytes, file.path);
-        }
-      }
+    const worker = async () => {
+      while (queue.length > 0) {
+        const { file, idx } = queue.shift();
+        const url = `./${file.path}`;
+        let blob = null;
 
-      if (!blob) {
-        const resp = await fetch(url, { cache: 'no-store' });
-        if (!resp.ok) {
-          throw new Error(`${file.path} (HTTP ${resp.status})`);
-        }
-
-        if (resp.body && resp.body.getReader) {
-          const reader = resp.body.getReader();
-          const chunks = [];
-          let fileReceived = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            fileReceived += value.byteLength;
-            onProgress?.(Math.min(totalBytes, loadedBytes + fileReceived), totalBytes, file.path);
-          }
-          blob = new Blob(chunks, { type: resp.headers.get('content-type') || 'application/octet-stream' });
-          loadedBytes += file.size;
-        } else {
-          blob = await resp.blob();
-          loadedBytes += file.size;
-          onProgress?.(Math.min(totalBytes, loadedBytes), totalBytes, file.path);
-        }
-
-        if (cache) {
-          try {
-            await cache.put(
-              url,
-              new Response(blob, { headers: { 'X-Asset-Size': String(file.size) } })
-            );
-          } catch {
-            // Quota fallback: continue without caching
+        if (cache && cachedPaths.has(file.path)) {
+          const cachedResp = await cache.match(url);
+          if (cachedResp && Number(cachedResp.headers.get('X-Asset-Size')) === file.size) {
+            blob = await cachedResp.blob();
+            fileProgress[idx] = file.size;
+            emitProgress(file.path);
           }
         }
-      }
 
-      this.blobs.set(file.path, blob);
-      if (file.category === 'models' || file.category === 'textures') {
-        this.objectUrls.set(file.path, URL.createObjectURL(blob));
+        if (!blob) {
+          const resp = await fetch(url, { cache: 'no-store' });
+          if (!resp.ok) {
+            throw new Error(`${file.path} (HTTP ${resp.status})`);
+          }
+
+          if (resp.body && resp.body.getReader) {
+            const reader = resp.body.getReader();
+            const chunks = [];
+            let fileReceived = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              fileReceived += value.byteLength;
+              fileProgress[idx] = Math.min(file.size, fileReceived);
+              emitProgress(file.path);
+            }
+            blob = new Blob(chunks, { type: resp.headers.get('content-type') || 'application/octet-stream' });
+            fileProgress[idx] = file.size;
+            emitProgress(file.path);
+          } else {
+            blob = await resp.blob();
+            fileProgress[idx] = file.size;
+            emitProgress(file.path);
+          }
+
+          if (cache) {
+            try {
+              await cache.put(
+                url,
+                new Response(blob, { headers: { 'X-Asset-Size': String(file.size) } })
+              );
+            } catch {
+              // Quota fallback: continue without caching
+            }
+          }
+        }
+
+        this.blobs.set(file.path, blob);
+        if (file.category === 'models' || file.category === 'textures') {
+          this.objectUrls.set(file.path, URL.createObjectURL(blob));
+        }
       }
+    };
+
+    const workers = [];
+    for (let i = 0; i < Math.min(concurrency, queue.length); i++) {
+      workers.push(worker());
     }
+    await Promise.all(workers);
   }
 
   async getArrayBuffer(relPath) {
@@ -131,15 +164,19 @@ export class AssetLoader {
     return res.arrayBuffer();
   }
 
-  async loadTexture(name, repeatX = 1, repeatY = 1) {
+  async loadTexture(name, repeatX = 1, repeatY = 1, opts = {}) {
     const relPath = `assets/textures/${name}.webp`;
     const url = this.objectUrls.get(relPath) || `./${relPath}`;
     const tex = await this.textureLoader.loadAsync(url);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(repeatX, repeatY);
-    tex.anisotropy = 4;
+    tex.colorSpace = opts.colorSpace ?? THREE.SRGBColorSpace;
+    const clamp = !!opts.clamp;
+    tex.wrapS = clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+    tex.wrapT = clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+    if (!clamp) tex.repeat.set(repeatX, repeatY);
+    if (opts.flipY !== undefined) tex.flipY = opts.flipY;
+    if (opts.channel !== undefined) tex.channel = opts.channel;
+    tex.anisotropy = opts.anisotropy ?? (clamp ? 2 : 4);
+    tex.needsUpdate = true;
     this.textures.set(name, tex);
     return tex;
   }

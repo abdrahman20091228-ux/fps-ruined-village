@@ -1,23 +1,40 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { DIFFICULTIES } from '../core/config.js';
+import { createBakedLitBasicMaterial } from '../core/lightProbes.js';
 
-function findPathAStar(waypoints, startPos, goalPos) {
+function findPathAStar(waypoints, startPos, goalPos, physics = null) {
   if (!waypoints || waypoints.length === 0) return [goalPos];
 
   const nearestNode = (p) => {
-    let best = 0;
-    let bestD = Infinity;
+    const cands = [];
     for (let i = 0; i < waypoints.length; i++) {
       const w = waypoints[i];
       const dy = (w.y - p.y) * 3.0;
       const d = (w.x - p.x) ** 2 + dy * dy + (w.z - p.z) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = i;
+      cands.push({ idx: i, d });
+    }
+    cands.sort((a, b) => a.d - b.d);
+    if (physics) {
+      const limit = Math.min(3, cands.length);
+      for (let k = 0; k < limit; k++) {
+        const w = waypoints[cands[k].idx];
+        const dx = w.x - p.x;
+        const dy = (w.y + 0.9) - (p.y + 0.9);
+        const dz = w.z - p.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist < 0.35) return cands[k].idx;
+        const hit = physics.castRay(
+          { x: p.x, y: p.y + 0.9, z: p.z },
+          { x: dx / dist, y: dy / dist, z: dz / dist },
+          dist - 0.3
+        );
+        if (!hit || hit.meta?.kind === 'enemy' || hit.meta?.kind === 'player' || hit.meta?.kind === 'door') {
+          return cands[k].idx;
+        }
       }
     }
-    return best;
+    return cands[0].idx;
   };
 
   const startIdx = nearestNode(startPos);
@@ -72,25 +89,54 @@ function findPathAStar(waypoints, startPos, goalPos) {
   return [goalPos];
 }
 
+let _silShared = null;
+function getSilhouetteShared() {
+  if (!_silShared) {
+    _silShared = {
+      torsoGeo: new THREE.BoxGeometry(0.42, 0.62, 0.24),
+      vestGeo: new THREE.BoxGeometry(0.44, 0.36, 0.27),
+      headGeo: new THREE.BoxGeometry(0.20, 0.21, 0.20),
+      helmetGeo: new THREE.BoxGeometry(0.23, 0.13, 0.23),
+      legsGeo: new THREE.BoxGeometry(0.34, 0.76, 0.22),
+      gunGeo: new THREE.BoxGeometry(0.06, 0.08, 0.56),
+      darkMat: createBakedLitBasicMaterial({ color: 0x24282e }),
+      skinMat: createBakedLitBasicMaterial({ color: 0x9c826b }),
+      tintMats: new Map(),
+    };
+  }
+  return _silShared;
+}
+
 function createLowPolySilhouette(tintHex) {
-  const mat = new THREE.MeshLambertMaterial({ color: tintHex });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x24282e });
-  const skin = new THREE.MeshLambertMaterial({ color: 0x9c826b });
+  const s = getSilhouetteShared();
+  let mat = s.tintMats.get(tintHex);
+  if (!mat) {
+    mat = createBakedLitBasicMaterial({ color: tintHex });
+    s.tintMats.set(tintHex, mat);
+  }
   const grp = new THREE.Group();
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.62, 0.24), mat);
+  const torso = new THREE.Mesh(s.torsoGeo, mat);
   torso.position.y = 1.06;
-  const vest = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.36, 0.27), dark);
+  const vest = new THREE.Mesh(s.vestGeo, s.darkMat);
   vest.position.y = 1.12;
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.21, 0.20), skin);
+  const head = new THREE.Mesh(s.headGeo, s.skinMat);
   head.position.y = 1.52;
-  const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.23, 0.13, 0.23), dark);
+  const helmet = new THREE.Mesh(s.helmetGeo, s.darkMat);
   helmet.position.y = 1.60;
-  const legs = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.76, 0.22), mat);
+  const legs = new THREE.Mesh(s.legsGeo, mat);
   legs.position.y = 0.38;
-  const gun = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.56), dark);
+  const gun = new THREE.Mesh(s.gunGeo, s.darkMat);
   gun.position.set(-0.12, 1.18, 0.28);
   grp.add(torso, vest, head, helmet, legs, gun);
   return grp;
+}
+
+function turnYawSmooth(current, target, maxDelta) {
+  let diff = target - current;
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  while (diff < -Math.PI) diff += Math.PI * 2;
+  if (Math.abs(diff) <= maxDelta) return target;
+  return current + Math.sign(diff) * maxDelta;
 }
 
 const ARCHETYPES = [
@@ -111,6 +157,9 @@ const ARCHETYPES = [
 const _vMuzzle = new THREE.Vector3();
 const _vTarget = new THREE.Vector3();
 const _vDir = new THREE.Vector3();
+const _vOrthoU = new THREE.Vector3();
+const _vOrthoV = new THREE.Vector3();
+const _vWorldUp = new THREE.Vector3(0, 1, 0);
 const _vEnd = new THREE.Vector3();
 const _vWPos = new THREE.Vector3();
 const _qWRot = new THREE.Quaternion();
@@ -133,14 +182,31 @@ export class EnemySystem {
     this.lodObjects = [];
     this.waypoints = [];
     this.difficulty = DIFFICULTIES.regular;
+    this.probeGrid = null;
     this._models = null;
     this._worldGuns = null;
     this._gunMetrics = null;
+    this._contactsPool = [];
+    this._shadowBlobInst = null;
+    this._dynamicBlobsEnabled = true;
+    this._blobDummy = new THREE.Object3D();
+    this._zeroScaleMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+  }
+
+  setProbeGrid(grid) {
+    this.probeGrid = grid || null;
+  }
+
+  setDynamicBlobsEnabled(enabled) {
+    this._dynamicBlobsEnabled = !!enabled;
+    if (this._shadowBlobInst) {
+      this._shadowBlobInst.visible = this._dynamicBlobsEnabled;
+    }
   }
 
   async preloadModels() {
     if (this._models) return;
-    const [fighter, swat, soldier, militia, wm4, wakm, wpis] = await Promise.all([
+    const [fighter, swat, soldier, militia, wm4, wakm, wpis, shadowBlobTex] = await Promise.all([
       this.assets.loadModel('enemy_fighter'),
       this.assets.loadModel('enemy_swat'),
       this.assets.loadModel('enemy_soldier'),
@@ -148,6 +214,9 @@ export class EnemySystem {
       this.assets.loadModel('world_m4'),
       this.assets.loadModel('world_akm'),
       this.assets.loadModel('world_pistol'),
+      this.assets
+        .loadTexture('shadow_blob', 1, 1, { clamp: true, colorSpace: THREE.SRGBColorSpace })
+        .catch(() => null),
     ]);
 
     this._models = { fighter, swat, soldier, militia };
@@ -158,13 +227,6 @@ export class EnemySystem {
         if (o.isMesh) {
           o.castShadow = false;
           o.receiveShadow = false;
-          if (o.material && o.material.isMeshStandardMaterial) {
-            const old = o.material;
-            o.material = new THREE.MeshLambertMaterial({
-              color: old.color ? old.color.clone() : 0xffffff,
-              map: old.map || null,
-            });
-          }
         }
       });
       const box = new THREE.Box3().setFromObject(sceneObj);
@@ -174,10 +236,49 @@ export class EnemySystem {
       box.getCenter(center);
       this._gunMetrics[k] = { min: box.min.clone(), max: box.max.clone(), size, center };
     }
+
+    if (shadowBlobTex && !this._shadowBlobInst) {
+      const bGeo = new THREE.PlaneGeometry(1, 1);
+      bGeo.rotateX(-Math.PI / 2);
+      const bMat = new THREE.MeshBasicMaterial({
+        map: shadowBlobTex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.54,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+      });
+      this._shadowBlobInst = new THREE.InstancedMesh(bGeo, bMat, 12);
+      this._shadowBlobInst.frustumCulled = false;
+      for (let i = 0; i < 12; i++) this._shadowBlobInst.setMatrixAt(i, this._zeroScaleMatrix);
+      this._shadowBlobInst.instanceMatrix.needsUpdate = true;
+      this._shadowBlobInst.visible = this._dynamicBlobsEnabled;
+      this.scene.add(this._shadowBlobInst);
+    }
+  }
+
+  _createEnemyBakedMat(oldMat, isGun = false, hasVertexColor = false) {
+    return createBakedLitBasicMaterial({
+      color: oldMat?.color ? oldMat.color.getHex() : 0xffffff,
+      map: oldMat?.map || null,
+      vertexColors: !!(oldMat?.vertexColors && hasVertexColor),
+      baseFloor: isGun ? 0.64 : 0.68,
+      hemiWeight: 0.24,
+      sunWeight: 0.36,
+      specBoost: isGun ? 0.16 : 0.04,
+    });
   }
 
   clear() {
     for (const e of this.enemies) {
+      if (e.mixer) {
+        e.mixer.stopAllAction();
+        if (e.m0) e.mixer.uncacheRoot(e.m0);
+      }
+      if (e.bakedMats) {
+        for (const m of e.bakedMats) m.dispose();
+      }
       this.scene.remove(e.lod);
       if (e.collider) {
         this.physics.colliderMeta.delete(e.collider.handle);
@@ -195,9 +296,14 @@ export class EnemySystem {
     }
     this.enemies.length = 0;
     this.lodObjects.length = 0;
+    if (this._shadowBlobInst) {
+      for (let i = 0; i < 12; i++) this._shadowBlobInst.setMatrixAt(i, this._zeroScaleMatrix);
+      this._shadowBlobInst.instanceMatrix.needsUpdate = true;
+    }
   }
 
   async spawnVillageSquad(village, difficultyKey = 'regular') {
+    this.probeGrid = village?.probeGrid || this.probeGrid;
     await this.preloadModels();
     this.clear();
     this.waypoints = village.waypoints || [];
@@ -207,12 +313,14 @@ export class EnemySystem {
     spawns.slice(0, 12).forEach((sp, idx) => {
       this._spawnOne(sp.pos, sp.isOutdoor, sp.patrol || [], idx);
     });
+    this._syncEnemyLightAndBlobs(true);
   }
 
   _spawnOne(pos, isOutdoor, patrolNodes, idx) {
     const cfg = ARCHETYPES[idx % ARCHETYPES.length];
     const gltf = this._models[cfg.key];
     const m0 = cloneSkinned(gltf.scene);
+    const bakedMats = [];
 
     let spineBone = null;
     let wristBone = null;
@@ -223,14 +331,20 @@ export class EnemySystem {
       }
       if (obj.isMesh) {
         obj.castShadow = false;
-        obj.receiveShadow = true;
-        if (obj.material && obj.material.isMeshStandardMaterial) {
-          const old = obj.material;
-          obj.material = new THREE.MeshLambertMaterial({
-            color: old.color ? old.color.clone() : 0xffffff,
-            map: old.map || null,
-            vertexColors: !!old.vertexColors,
-          });
+        obj.receiveShadow = false;
+        const hasVC = !!obj.geometry?.attributes?.color;
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material = obj.material.map((m) => {
+              const bm = this._createEnemyBakedMat(m, false, hasVC);
+              bakedMats.push(bm);
+              return bm;
+            });
+          } else {
+            const bm = this._createEnemyBakedMat(obj.material, false, hasVC);
+            bakedMats.push(bm);
+            obj.material = bm;
+          }
         }
       }
     });
@@ -281,6 +395,22 @@ export class EnemySystem {
       wristBone.matrixWorld.decompose(_vWPos, _qWRot, _vWScl);
       const invScale = 1 / Math.max(0.0001, _vWScl.x);
       const rawGun = cloneSkinned(gunTemplate);
+      rawGun.traverse((o) => {
+        if (o.isMesh && o.material) {
+          const hasVC = !!o.geometry?.attributes?.color;
+          o.material = Array.isArray(o.material)
+            ? o.material.map((m) => {
+                const bm = this._createEnemyBakedMat(m, true, hasVC);
+                bakedMats.push(bm);
+                return bm;
+              })
+            : (() => {
+                const bm = this._createEnemyBakedMat(o.material, true, hasVC);
+                bakedMats.push(bm);
+                return bm;
+              })();
+        }
+      });
       rawGun.position.set(-gm.center.x, -gm.min.y - gm.size.y * 0.25, -gm.max.z + gm.size.z * 0.28);
       const gunPivot = new THREE.Group();
       gunPivot.add(rawGun);
@@ -293,8 +423,8 @@ export class EnemySystem {
     const lod = new THREE.LOD();
     lod.position.set(pos.x, pos.y, pos.z);
     lod.addLevel(m0, 0);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 20);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 52);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 48);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 80);
     this.scene.add(lod);
     this.lodObjects.push(lod);
 
@@ -310,11 +440,14 @@ export class EnemySystem {
     charCtrl.setMaxSlopeClimbAngle((55 * Math.PI) / 180);
     charCtrl.setMinSlopeSlideAngle((58 * Math.PI) / 180);
 
+    const magSize = cfg.gun === 'pistol' ? 12 : 18;
     const enemy = {
       id: idx,
       cfg,
       lod,
       m0,
+      bakedMats,
+      probeTint: new THREE.Vector3(1, 1, 1),
       spineBone,
       mixer,
       animMap,
@@ -327,8 +460,10 @@ export class EnemySystem {
       homePos: new THREE.Vector3(pos.x, pos.y, pos.z),
       patrolNodes,
       yaw: Math.random() * Math.PI * 2,
+      targetYaw: 0,
       aimPitch: 0,
       hitTimer: 0,
+      shootAnimTimer: 0,
       strafeDir: idx % 2 === 0 ? 1 : -1,
       strafeTimer: 1.5 + Math.random(),
       hp: 100,
@@ -338,11 +473,15 @@ export class EnemySystem {
       isOutdoor,
       state: isOutdoor && patrolNodes.length > 0 ? 'search' : 'idle',
       lastKnownTarget: null,
+      loseSightTimer: 0,
       path: [],
       pathIdx: 0,
       reactionTimer: 0,
       fireCooldown: 0.65 + Math.random() * 0.55,
       burstLeft: 0,
+      magSize,
+      magLeft: magSize,
+      reloadTimer: 0,
       stepTimer: Math.random() * 0.4,
       recentShotTimer: 0,
       stuckTimer: 0,
@@ -350,9 +489,10 @@ export class EnemySystem {
       animAccum: 0,
       patrolTimer: 1.5 + Math.random() * 3.0,
     };
+    enemy.targetYaw = enemy.yaw;
 
     if (enemy.state === 'search' && this.waypoints[patrolNodes[0]]) {
-      enemy.path = findPathAStar(this.waypoints, enemy.pos, this.waypoints[patrolNodes[0]]);
+      enemy.path = findPathAStar(this.waypoints, enemy.pos, this.waypoints[patrolNodes[0]], this.physics);
     }
 
     this.physics.colliderMeta.set(collider.handle, {
@@ -380,20 +520,25 @@ export class EnemySystem {
   }
 
   getThreatContacts() {
-    const list = [];
+    let n = 0;
     for (const e of this.enemies) {
       if (!e.alive) continue;
-      list.push({
-        pos: e.pos,
-        isHostileActive: e.state === 'engage' || e.recentShotTimer > 0,
-      });
+      let slot = this._contactsPool[n];
+      if (!slot) {
+        slot = { pos: e.pos, isHostileActive: false };
+        this._contactsPool[n] = slot;
+      }
+      slot.pos = e.pos;
+      slot.isHostileActive = e.state === 'engage' || e.recentShotTimer > 0;
+      n++;
     }
-    return list;
+    this._contactsPool.length = n;
+    return this._contactsPool;
   }
 
   notifyGunfire(origin, isPlayerIndoors) {
-    const hearRange = isPlayerIndoors ? 15 : 26;
-    let maxChasers = 2;
+    const hearRange = isPlayerIndoors ? 16 : 28;
+    let maxChasers = 3;
     for (const e of this.enemies) {
       if (e.alive && e.state === 'alert') maxChasers--;
     }
@@ -402,41 +547,62 @@ export class EnemySystem {
       if (!e.alive) continue;
       const d = Math.hypot(e.pos.x - origin.x, (e.pos.y - origin.y) * 1.6, e.pos.z - origin.z);
       if (d <= hearRange && (e.state === 'idle' || e.state === 'search')) {
-        if (d < 15 || maxChasers > 0) {
-          if (d >= 15) maxChasers--;
+        if (d < 16 || maxChasers > 0) {
+          if (d >= 16) maxChasers--;
           e.state = 'alert';
           e.lastKnownTarget = { x: origin.x, y: origin.y, z: origin.z };
-          e.path = findPathAStar(this.waypoints, e.pos, e.lastKnownTarget);
+          e.path = findPathAStar(this.waypoints, e.pos, e.lastKnownTarget, this.physics);
           e.pathIdx = 0;
         } else {
-          e.yaw = Math.atan2(origin.x - e.pos.x, origin.z - e.pos.z);
+          e.targetYaw = Math.atan2(origin.x - e.pos.x, origin.z - e.pos.z);
         }
       }
     }
   }
 
   damageEnemy(enemy, amount, hitPoint, dir) {
-    if (!enemy.alive) return;
-    enemy.hp -= amount;
+    if (!enemy || !enemy.alive) return { isHead: false, killed: false, hp: 0 };
+
+    const relY = hitPoint ? hitPoint.y - enemy.pos.y : 1.0;
+    const isHead = !!(hitPoint && relY > 1.42);
+    const isLeg = !!(hitPoint && relY < 0.72);
+    const dmgMult = isHead ? 2.1 : isLeg ? 0.75 : 1.0;
+    const finalDamage = amount * dmgMult;
+
+    enemy.hp -= finalDamage;
     enemy.state = enemy.hp < 26 ? 'retreat' : 'engage';
-    enemy.recentShotTimer = 3.0;
+    enemy.loseSightTimer = 2.6;
+    enemy.recentShotTimer = 3.5;
     if (hitPoint && dir) {
       enemy.lastKnownTarget = {
         x: hitPoint.x - dir.x * 6,
         y: enemy.pos.y,
         z: hitPoint.z - dir.z * 6,
       };
+      enemy.targetYaw = Math.atan2(-dir.x, -dir.z);
     }
 
     if (enemy.hp <= 0) {
+      enemy.hp = 0;
       enemy.alive = false;
       enemy.deadTimer = 0;
-      if (enemy.collider) {
-        this.physics.colliderMeta.delete(enemy.collider.handle);
-        this.physics.world.removeCollider(enemy.collider, true);
+      const prevCol = enemy.collider;
+      if (prevCol) {
+        this.physics.colliderMeta.delete(prevCol.handle);
+        this.physics.world.removeCollider(prevCol, true);
         enemy.collider = null;
       }
-      // Play real skeletal motion-captured death collapse (Death01)!
+      // Snap dead body onto ground/stair surface cleanly so corpses never hover
+      const floorHit = this.physics.castRay(
+        { x: enemy.pos.x, y: enemy.pos.y + 0.6, z: enemy.pos.z },
+        { x: 0, y: -1, z: 0 },
+        2.5
+      );
+      if (floorHit && floorHit.point) {
+        enemy.pos.y = floorHit.point.y;
+        enemy.lod.position.set(enemy.pos.x, enemy.pos.y, enemy.pos.z);
+      }
+
       const prev = enemy.animMap[enemy.activeKey];
       if (prev) prev.fadeOut(0.1);
       const dAct = enemy.animMap.death;
@@ -444,12 +610,12 @@ export class EnemySystem {
         dAct.reset().setEffectiveTimeScale(1.08).setEffectiveWeight(1).fadeIn(0.08).play();
         enemy.activeKey = 'death';
       }
+      return { isHead, killed: true, hp: 0 };
     } else {
-      enemy.hitTimer = 0.36;
+      enemy.hitTimer = 0.28;
       enemy.strafeDir = -enemy.strafeDir;
       enemy.strafeTimer = 1.2 + Math.random() * 0.8;
       enemy.burstLeft = 0;
-      const isHead = hitPoint && hitPoint.y > enemy.pos.y + 1.42;
       const hitAct = (isHead ? enemy.animMap.headHit : enemy.animMap.hit) || enemy.animMap.hit;
       if (hitAct) {
         const prev = enemy.animMap[enemy.activeKey];
@@ -457,27 +623,43 @@ export class EnemySystem {
         hitAct.reset().setEffectiveTimeScale(1.3).setEffectiveWeight(1).fadeIn(0.05).play();
         enemy.activeKey = isHead ? 'headHit' : 'hit';
       }
+      return { isHead, killed: false, hp: enemy.hp };
     }
   }
 
-  _canSeePlayer(e, playerPos) {
+  _canSeePlayer(e, playerPos, isPlayerCrouching = false) {
     const dx = playerPos.x - e.pos.x;
-    const dy = playerPos.y + 1.45 - (e.pos.y + 1.5);
+    const eyeOff = isPlayerCrouching ? 0.92 : 1.45;
+    const dy = playerPos.y + eyeOff - (e.pos.y + 1.5);
     const dz = playerPos.z - e.pos.z;
     const dist = Math.hypot(dx, dy, dz);
     if (dist > this.difficulty.sightRange) return false;
 
-    if (e.state !== 'engage' && dist > 4.5) {
+    if (e.state !== 'engage' && dist > 4.8) {
       const fwdX = Math.sin(e.yaw);
       const fwdZ = Math.cos(e.yaw);
       const dot = (dx * fwdX + dz * fwdZ) / Math.max(0.01, Math.hypot(dx, dz));
-      if (dot < 0.35) return false;
+      if (dot < 0.30) return false;
     }
 
     const origin = { x: e.pos.x, y: e.pos.y + 1.5, z: e.pos.z };
     const dir = { x: dx / dist, y: dy / dist, z: dz / dist };
     const hit = this.physics.castRay(origin, dir, dist - 0.38, e.collider);
     return !hit;
+  }
+
+  _hasFloorAhead(e, vx, vz) {
+    const mag = Math.hypot(vx, vz);
+    if (mag < 0.1) return true;
+    const probeX = e.pos.x + (vx / mag) * 0.72;
+    const probeZ = e.pos.z + (vz / mag) * 0.72;
+    const hit = this.physics.castRay(
+      { x: probeX, y: e.pos.y + 0.55, z: probeZ },
+      { x: 0, y: -1, z: 0 },
+      1.75,
+      e.collider
+    );
+    return !!hit;
   }
 
   _moveWithPhysics(e, wishVx, wishVz, dt, distToPlayer = 99) {
@@ -502,6 +684,14 @@ export class EnemySystem {
     let vz = wishVz + sepZ;
     let horizMag = Math.hypot(vx, vz);
 
+    // Prevent upper-floor / balcony defenders from stepping off ledges while strafing
+    if (e.pos.y > 0.6 && e.state === 'engage' && horizMag > 0.35 && !this._hasFloorAhead(e, vx, vz)) {
+      e.strafeDir = -e.strafeDir;
+      vx = 0;
+      vz = 0;
+      horizMag = 0;
+    }
+
     if (horizMag > 0.4) {
       const fx = vx / horizMag;
       const fz = vz / horizMag;
@@ -511,7 +701,6 @@ export class EnemySystem {
         centerHit.meta.ref.isOpen = true;
         centerHit.meta.ref.targetAngle = (centerHit.meta.ref.openDir || 1) * Math.PI * 0.52;
       } else if (centerHit && centerHit.meta?.kind !== 'enemy' && centerHit.meta?.kind !== 'player' && centerHit.meta?.kind !== 'stairs') {
-        // Whisker rays at +/-36 deg steer smoothly around doorframes & wall corners!
         const c = 0.809;
         const s = 0.588;
         const leftDir = { x: fx * c - fz * s, y: 0, z: fx * s + fz * c };
@@ -555,12 +744,39 @@ export class EnemySystem {
       e.stepTimer -= dt * Math.min(1.4, horizMag / 2.6);
       if (e.stepTimer <= 0) {
         e.stepTimer = 0.42;
-        this.audio.playClip(e.isOutdoor ? 'step_sand1' : 'step_stone1', e.pos, 0.30, 0.14);
+        this.audio.playClip(e.isOutdoor ? 'step_sand1' : 'step_stone1', e.pos, 0.24, 0.14);
       }
     }
   }
 
-  update(dt, playerPos, onDamagePlayer) {
+  _syncEnemyLightAndBlobs(force = false) {
+    if (this.probeGrid?.data) {
+      for (const e of this.enemies) {
+        if (!e.alive && !force) continue;
+        this.probeGrid.sample(e.pos.x, e.pos.y + 1.0, e.pos.z, e.probeTint, 0.48);
+        for (const m of e.bakedMats) {
+          m.userData?.bakedUniforms?.uProbeTint?.value.copy(e.probeTint);
+        }
+      }
+    }
+    if (this._shadowBlobInst && this._dynamicBlobsEnabled) {
+      for (let i = 0; i < 12; i++) {
+        const e = this.enemies[i];
+        if (e && e.alive) {
+          this._blobDummy.position.set(e.pos.x, e.pos.y + 0.025, e.pos.z);
+          this._blobDummy.rotation.set(0, 0, 0);
+          this._blobDummy.scale.set(0.95, 1, 0.95);
+          this._blobDummy.updateMatrix();
+          this._shadowBlobInst.setMatrixAt(i, this._blobDummy.matrix);
+        } else {
+          this._shadowBlobInst.setMatrixAt(i, this._zeroScaleMatrix);
+        }
+      }
+      this._shadowBlobInst.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  update(dt, playerPos, onDamagePlayer, isPlayerCrouching = false) {
     for (const e of this.enemies) {
       if (!e.alive) {
         if (e.deadTimer < 1.8) {
@@ -571,7 +787,12 @@ export class EnemySystem {
       }
 
       if (e.hitTimer > 0) e.hitTimer = Math.max(0, e.hitTimer - dt);
+      if (e.shootAnimTimer > 0) e.shootAnimTimer = Math.max(0, e.shootAnimTimer - dt);
       if (e.recentShotTimer > 0) e.recentShotTimer = Math.max(0, e.recentShotTimer - dt);
+      if (e.reloadTimer > 0) {
+        e.reloadTimer = Math.max(0, e.reloadTimer - dt);
+        if (e.reloadTimer <= 0) e.magLeft = e.magSize;
+      }
 
       const distToPlayer = Math.hypot(playerPos.x - e.pos.x, playerPos.y - e.pos.y, playerPos.z - e.pos.z);
       const isFar = distToPlayer > 36;
@@ -591,20 +812,24 @@ export class EnemySystem {
       const stepDt = e.aiAccum;
       e.aiAccum = 0;
 
-      const sees = this._canSeePlayer(e, playerPos);
+      const sees = this._canSeePlayer(e, playerPos, isPlayerCrouching);
       if (sees) {
         e.lastKnownTarget = { x: playerPos.x, y: playerPos.y, z: playerPos.z };
+        e.loseSightTimer = 2.6;
         if (e.state !== 'engage' && e.state !== 'retreat') {
           e.state = 'engage';
           e.reactionTimer = this.difficulty.reactionDelay;
           e.burstLeft = 0;
         }
       } else if (e.state === 'engage') {
-        e.state = 'search';
-        e.burstLeft = 0;
-        if (e.lastKnownTarget) {
-          e.path = findPathAStar(this.waypoints, e.pos, e.lastKnownTarget);
-          e.pathIdx = 0;
+        e.loseSightTimer -= stepDt;
+        if (e.loseSightTimer <= 0) {
+          e.state = 'search';
+          e.burstLeft = 0;
+          if (e.lastKnownTarget) {
+            e.path = findPathAStar(this.waypoints, e.pos, e.lastKnownTarget, this.physics);
+            e.pathIdx = 0;
+          }
         }
       }
 
@@ -620,17 +845,17 @@ export class EnemySystem {
           if (e.patrolNodes.length > 0 && Math.random() < 0.65) {
             const wpIdx = e.patrolNodes[Math.floor(Math.random() * e.patrolNodes.length)];
             if (this.waypoints[wpIdx]) {
-              e.path = findPathAStar(this.waypoints, e.pos, this.waypoints[wpIdx]);
+              e.path = findPathAStar(this.waypoints, e.pos, this.waypoints[wpIdx], this.physics);
               e.pathIdx = 0;
               e.state = 'search';
             }
           } else {
-            e.yaw += (Math.random() - 0.5) * 1.4;
+            e.targetYaw += (Math.random() - 0.5) * 1.4;
           }
         }
       } else if (e.state === 'alert' || e.state === 'search') {
         e.aimPitch *= 0.9;
-        const moveRes = this._computePathMove(e, 2.45, stepDt);
+        const moveRes = this._computePathMove(e, 2.55);
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
         desiredAnim = moveRes.moving ? 'walk' : 'idle';
@@ -640,7 +865,7 @@ export class EnemySystem {
             const wpIdx = e.patrolNodes[Math.floor(Math.random() * e.patrolNodes.length)];
             const wp = this.waypoints[wpIdx];
             if (wp) {
-              e.path = findPathAStar(this.waypoints, e.pos, wp);
+              e.path = findPathAStar(this.waypoints, e.pos, wp, this.physics);
               e.pathIdx = 0;
             }
           } else {
@@ -649,22 +874,23 @@ export class EnemySystem {
         }
       } else if (e.state === 'retreat') {
         if (e.pathIdx >= e.path.length) {
-          e.path = findPathAStar(this.waypoints, e.pos, e.homePos);
+          e.path = findPathAStar(this.waypoints, e.pos, e.homePos, this.physics);
           e.pathIdx = 0;
         }
-        const moveRes = this._computePathMove(e, 3.6, stepDt);
+        const moveRes = this._computePathMove(e, 3.6);
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
         desiredAnim = moveRes.moving ? 'run' : 'aimIdle';
-        if (sees) {
+        if (sees && e.reloadTimer <= 0) {
           e.fireCooldown -= stepDt;
-          if (e.fireCooldown <= 0) this._shootAtPlayer(e, playerPos, onDamagePlayer);
+          if (e.fireCooldown <= 0) this._shootAtPlayer(e, playerPos, onDamagePlayer, isPlayerCrouching);
         }
       } else if (e.state === 'engage') {
-        const dx = playerPos.x - e.pos.x;
-        const dy = playerPos.y - e.pos.y;
-        const dz = playerPos.z - e.pos.z;
-        e.yaw = Math.atan2(dx, dz);
+        const aimRef = sees ? playerPos : (e.lastKnownTarget || playerPos);
+        const dx = aimRef.x - e.pos.x;
+        const dy = aimRef.y - e.pos.y;
+        const dz = aimRef.z - e.pos.z;
+        e.targetYaw = Math.atan2(dx, dz);
         const horizDist = Math.hypot(dx, dz);
         e.aimPitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.max(1, horizDist)), -0.6, 0.6);
 
@@ -674,19 +900,20 @@ export class EnemySystem {
           e.strafeDir = -e.strafeDir;
         }
 
-        if (horizDist > 16 && Math.abs(dy) < 1.8) {
+        if (horizDist > 16 && Math.abs(dy) < 2.1) {
           wishVx = (dx / horizDist) * 2.95;
           wishVz = (dz / horizDist) * 2.95;
           desiredAnim = 'run';
-        } else if (horizDist < 4.5 && Math.abs(dy) < 1.8) {
+        } else if (horizDist < 4.5 && Math.abs(dy) < 2.1) {
           wishVx = -(dx / Math.max(0.1, horizDist)) * 1.45;
           wishVz = -(dz / Math.max(0.1, horizDist)) * 1.45;
           desiredAnim = 'aimWalk';
-        } else if (horizDist > 5.0 && Math.abs(dy) < 1.8) {
+        } else if (horizDist > 4.5) {
           const rx = Math.cos(e.yaw) * e.strafeDir;
           const rz = -Math.sin(e.yaw) * e.strafeDir;
-          wishVx = rx * 1.35;
-          wishVz = rz * 1.35;
+          const strafeSpeed = e.pos.y > 0.6 ? 0.95 : 1.35;
+          wishVx = rx * strafeSpeed;
+          wishVz = rz * strafeSpeed;
           desiredAnim = 'aimWalk';
         } else {
           desiredAnim = 'aimIdle';
@@ -694,20 +921,22 @@ export class EnemySystem {
 
         if (e.reactionTimer > 0) {
           e.reactionTimer -= stepDt;
-        } else {
+        } else if (e.reloadTimer <= 0) {
           e.fireCooldown -= stepDt;
           if (e.fireCooldown <= 0 && sees) {
-            this._shootAtPlayer(e, playerPos, onDamagePlayer);
+            this._shootAtPlayer(e, playerPos, onDamagePlayer, isPlayerCrouching);
           }
         }
       }
 
+      e.yaw = turnYawSmooth(e.yaw, e.targetYaw, 9.0 * stepDt);
       this._moveWithPhysics(e, wishVx, wishVz, stepDt, distToPlayer);
       e.lod.rotation.y = e.yaw;
-      if (e.hitTimer <= 0) {
+      if (e.hitTimer <= 0 && e.shootAnimTimer <= 0) {
         this._switchAnim(e, desiredAnim);
       }
     }
+    this._syncEnemyLightAndBlobs(false);
   }
 
   _computePathMove(e, speed) {
@@ -727,22 +956,32 @@ export class EnemySystem {
     const dz = nextT.z - e.pos.z;
     const d = Math.hypot(dx, dz);
     if (d < 0.08) return { vx: 0, vz: 0, moving: false };
-    e.yaw = Math.atan2(dx, dz);
+    e.targetYaw = Math.atan2(dx, dz);
     return { vx: (dx / d) * speed, vz: (dz / d) * speed, moving: true };
   }
 
-  _shootAtPlayer(e, playerPos, onDamagePlayer) {
+  _shootAtPlayer(e, playerPos, onDamagePlayer, isPlayerCrouching = false) {
+    if (e.magLeft <= 0) {
+      e.reloadTimer = 1.8;
+      e.burstLeft = 0;
+      return;
+    }
     if (e.burstLeft <= 0) {
       e.burstLeft = e.cfg.gun === 'pistol' ? 2 : 2 + Math.floor(Math.random() * 2);
     }
     e.burstLeft--;
+    e.magLeft--;
+    if (e.magLeft <= 0) {
+      e.reloadTimer = 1.8;
+      e.burstLeft = 0;
+    }
     e.fireCooldown = e.burstLeft > 0
       ? (e.cfg.gun === 'pistol' ? 0.22 : 0.14)
       : (0.85 + Math.random() * 0.55);
 
     e.recentShotTimer = 3.5;
     if (e.hitTimer <= 0 && e.animMap.shoot) {
-      e.hitTimer = 0.14;
+      e.shootAnimTimer = 0.14;
       const prev = e.animMap[e.activeKey];
       if (prev && prev !== e.animMap.shoot) prev.fadeOut(0.06);
       e.animMap.shoot.reset().setEffectiveWeight(1).fadeIn(0.04).play();
@@ -752,14 +991,21 @@ export class EnemySystem {
     const fwdX = Math.sin(e.yaw);
     const fwdZ = Math.cos(e.yaw);
     _vMuzzle.set(e.pos.x + fwdX * 0.48, e.pos.y + 1.38, e.pos.z + fwdZ * 0.48);
-    _vTarget.set(playerPos.x, playerPos.y + 1.32, playerPos.z);
+    _vTarget.set(playerPos.x, playerPos.y + (isPlayerCrouching ? 0.78 : 1.32), playerPos.z);
     _vDir.subVectors(_vTarget, _vMuzzle).normalize();
 
     const sp = this.difficulty.aimSpread;
-    _vDir.x += (Math.random() - 0.5) * sp;
-    _vDir.y += (Math.random() - 0.5) * sp * 0.7;
-    _vDir.z += (Math.random() - 0.5) * sp;
-    _vDir.normalize();
+    if (sp > 0) {
+      _vOrthoU.crossVectors(_vDir, _vWorldUp);
+      if (_vOrthoU.lengthSq() < 1e-6) _vOrthoU.set(1, 0, 0);
+      else _vOrthoU.normalize();
+      _vOrthoV.crossVectors(_vOrthoU, _vDir).normalize();
+      const phi = Math.random() * Math.PI * 2;
+      const r = sp * 0.55 * Math.sqrt(Math.random());
+      _vDir.addScaledVector(_vOrthoU, Math.cos(phi) * r)
+        .addScaledVector(_vOrthoV, Math.sin(phi) * r * 0.85)
+        .normalize();
+    }
 
     this.audio.playShot(e.cfg.gun === 'm4' ? 'm4' : e.cfg.gun === 'pistol' ? 'pistol' : 'akm', _vMuzzle, false);
     this.effects.triggerMuzzleFlash(_vMuzzle);

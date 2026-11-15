@@ -3,25 +3,28 @@ export const MAX_TRIANGLES = 500_000;
 
 export const QUALITY_PRESETS = {
   low: {
-    shadowSize: 512,
-    shadowInterval: 4,
-    triTarget: 105_000,
-    lodBias: 0.65,
-    drawDist: 75,
+    resFactor: 0.80,
+    triTarget: 135_000,
+    lodBias: 0.72,
+    drawDist: 82,
+    shadowBlobs: true,
+    dynamicBlobs: false,
   },
   medium: {
-    shadowSize: 1024,
-    shadowInterval: 2,
-    triTarget: 155_000,
+    resFactor: 1.0,
+    triTarget: 195_000,
     lodBias: 1.0,
-    drawDist: 96,
+    drawDist: 108,
+    shadowBlobs: true,
+    dynamicBlobs: true,
   },
   high: {
-    shadowSize: 1024,
-    shadowInterval: 1,
-    triTarget: 225_000,
-    lodBias: 1.25,
-    drawDist: 132,
+    resFactor: 1.15,
+    triTarget: 260_000,
+    lodBias: 1.3,
+    drawDist: 145,
+    shadowBlobs: true,
+    dynamicBlobs: true,
   },
 };
 
@@ -51,8 +54,13 @@ export const DIFFICULTIES = {
 
 export const DEFAULT_SETTINGS = {
   sensitivity: 1.6,
+  adsSensitivity: 0.75,
+  gyroMode: 'always', // 'always' | 'ads' | 'off'
   gyroEnabled: true,
   gyroSensitivity: 1.0,
+  gyroInvertY: false,
+  gyroSwapAxes: false,
+  preferredWeapon: 'm4',
   adsHold: true,
   resolutionScale: 0.8,
   quality: 'medium',
@@ -66,20 +74,25 @@ export const DEFAULT_SETTINGS = {
   difficulty: 'regular',
 };
 
-const STORAGE_KEY = 'ashes_of_vale_settings_v6';
+const STORAGE_KEY = 'ashes_of_vale_settings_v7';
 
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('ashes_of_vale_settings_v6');
     if (!raw) {
       return { ...DEFAULT_SETTINGS, customLayout: {} };
     }
     const parsed = JSON.parse(raw);
-    return {
+    const merged = {
       ...DEFAULT_SETTINGS,
       ...parsed,
       customLayout: parsed?.customLayout && typeof parsed.customLayout === 'object' ? { ...parsed.customLayout } : {},
     };
+    if (!parsed?.gyroMode) {
+      merged.gyroMode = merged.gyroEnabled === false ? 'off' : 'always';
+    }
+    merged.gyroEnabled = merged.gyroMode !== 'off';
+    return merged;
   } catch {
     return { ...DEFAULT_SETTINGS, customLayout: {} };
   }

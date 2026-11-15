@@ -35,6 +35,17 @@ export class PlayerController {
     this.collider = null;
     this.charCtrl = null;
     this._footstepTimer = 0;
+
+    // Reusable scratch buffers to eliminate per-frame GC churn
+    this._vFwd = new THREE.Vector3();
+    this._vRight = new THREE.Vector3();
+    this._vWish = new THREE.Vector3();
+    this._vFeet = new THREE.Vector3();
+    this._vEye = new THREE.Vector3();
+    this._vAim = new THREE.Vector3();
+    this._euler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this._desiredMove = { x: 0, y: 0, z: 0 };
+    this._nextPos = { x: 0, y: 0, z: 0 };
   }
 
   spawn(pos = { x: 0, y: 1.2, z: 0 }, yaw = 0) {
@@ -55,12 +66,16 @@ export class PlayerController {
 
     this.yaw = yaw;
     this.pitch = 0;
+    this.recoilPitch = 0;
+    this.recoilYaw = 0;
     this.velY = 0;
     this.landDip = 0;
     this._airFallPeak = 0;
     this.health = this.maxHealth;
     this.isCrouching = false;
+    this.isSprinting = false;
     this.currentHeight = this.standHeight;
+    this.eyeOffset = 1.56;
 
     const halfSeg = (this.standHeight - this.radius * 2) * 0.5;
     const rbDesc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, pos.y + this.standHeight * 0.5, pos.z);
@@ -100,14 +115,15 @@ export class PlayerController {
 
     const maxSpeed = this.isCrouching ? 2.85 : this.isSprinting ? 7.15 : input.ads ? 2.95 : 4.95;
 
-    const forward = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-    const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    this._vFwd.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+    this._vRight.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
-    const wishDir = new THREE.Vector3()
-      .addScaledVector(forward, input.moveY)
-      .addScaledVector(right, input.moveX);
-    const analogMag = Math.min(1.0, wishDir.length());
-    if (analogMag > 1e-4) wishDir.divideScalar(analogMag);
+    this._vWish
+      .set(0, 0, 0)
+      .addScaledVector(this._vFwd, input.moveY)
+      .addScaledVector(this._vRight, input.moveX);
+    const analogMag = Math.min(1.0, this._vWish.length());
+    if (analogMag > 1e-4) this._vWish.divideScalar(analogMag);
     const speed = maxSpeed * analogMag;
 
     if (this.isGrounded && input.jump && !this.isCrouching) {
@@ -126,14 +142,12 @@ export class PlayerController {
       this.velY = -1.5;
     }
 
-    const desiredMovement = {
-      x: wishDir.x * speed * dt,
-      y: this.velY * dt,
-      z: wishDir.z * speed * dt,
-    };
+    this._desiredMove.x = this._vWish.x * speed * dt;
+    this._desiredMove.y = this.velY * dt;
+    this._desiredMove.z = this._vWish.z * speed * dt;
 
     const wasGrounded = this.isGrounded;
-    this.charCtrl.computeColliderMovement(this.collider, desiredMovement);
+    this.charCtrl.computeColliderMovement(this.collider, this._desiredMove);
     const corrected = this.charCtrl.computedMovement();
     this.isGrounded = this.charCtrl.computedGrounded();
     if (this.isGrounded && !wasGrounded && this._airFallPeak > 2.2) {
@@ -145,22 +159,21 @@ export class PlayerController {
       this.velY = -0.5;
     }
 
-    const nextPos = {
-      x: t.x + corrected.x,
-      y: t.y + corrected.y,
-      z: t.z + corrected.z,
-    };
-    this.body.setNextKinematicTranslation(nextPos);
-    this.currPos.set(nextPos.x, nextPos.y, nextPos.z);
+    this._nextPos.x = t.x + corrected.x;
+    this._nextPos.y = t.y + corrected.y;
+    this._nextPos.z = t.z + corrected.z;
+    this.body.setNextKinematicTranslation(this._nextPos);
+    this.currPos.set(this._nextPos.x, this._nextPos.y, this._nextPos.z);
 
     // Footstep cadence & head-bob
     const horizSpeed = Math.hypot(corrected.x, corrected.z) / dt;
     if (this.isGrounded && horizSpeed > 0.85) {
-      this.bobPhase += dt * (this.isSprinting ? 13.5 : 9.2);
-      this._footstepTimer -= dt * (this.isSprinting ? 1.48 : Math.min(1.15, Math.max(0.65, horizSpeed / 4.8)));
+      this.bobPhase += dt * (this.isSprinting ? 13.5 : this.isCrouching ? 6.8 : 9.2);
+      const stepRate = this.isSprinting ? 1.48 : this.isCrouching ? 0.62 : Math.min(1.15, Math.max(0.65, horizSpeed / 4.8));
+      this._footstepTimer -= dt * stepRate;
       if (this._footstepTimer <= 0) {
         this._footstepTimer = 0.44;
-        if (onFootstep) onFootstep(this.getFeetPosition(), this.isSprinting);
+        if (onFootstep) onFootstep(this.getFeetPosition(), this.isSprinting, this.isCrouching);
       }
     } else {
       this._footstepTimer = 0.08;
@@ -168,36 +181,33 @@ export class PlayerController {
   }
 
   getFeetPosition() {
-    return new THREE.Vector3(
-      this.currPos.x,
-      this.currPos.y - this.standHeight * 0.5,
-      this.currPos.z
-    );
+    this._vFeet.set(this.currPos.x, this.currPos.y - this.standHeight * 0.5, this.currPos.z);
+    return this._vFeet;
   }
 
   getInterpolatedEyePosition(alpha) {
     const x = this.prevPos.x + (this.currPos.x - this.prevPos.x) * alpha;
     const y = this.prevPos.y + (this.currPos.y - this.prevPos.y) * alpha - this.standHeight * 0.5 + this.eyeOffset + this.landDip;
     const z = this.prevPos.z + (this.currPos.z - this.prevPos.z) * alpha;
-    const bobY = this.isGrounded ? Math.sin(this.bobPhase) * 0.025 : 0;
-    return new THREE.Vector3(x + this.shakeOffset.x, y + bobY + this.shakeOffset.y, z + this.shakeOffset.z);
+    const bobAmp = this.isCrouching ? 0.012 : 0.025;
+    const bobY = this.isGrounded ? Math.sin(this.bobPhase) * bobAmp : 0;
+    return this._vEye.set(x + this.shakeOffset.x, y + bobY + this.shakeOffset.y, z + this.shakeOffset.z);
   }
 
   applyCamera(alpha) {
     const eye = this.getInterpolatedEyePosition(alpha);
     this.camera.position.copy(eye);
-    const euler = new THREE.Euler(
+    this._euler.set(
       THREE.MathUtils.clamp(this.pitch + this.recoilPitch, -1.42, 1.42),
       this.yaw + this.recoilYaw,
       0,
       'YXZ'
     );
-    this.camera.quaternion.setFromEuler(euler);
+    this.camera.quaternion.setFromEuler(this._euler);
   }
 
   getAimDirection() {
-    const dir = new THREE.Vector3(0, 0, -1);
-    dir.applyQuaternion(this.camera.quaternion);
-    return dir.normalize();
+    this._vAim.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    return this._vAim.normalize();
   }
 }

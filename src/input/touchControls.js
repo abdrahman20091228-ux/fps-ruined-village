@@ -11,11 +11,54 @@ const DEFAULT_EDITOR_ITEMS = {
   'btn-door': { label: 'DOOR', leftPct: 71.0, topPct: 82.0, scale: 1.0, w: 52, h: 44 },
 };
 
+class OneEuroFilter1D {
+  constructor(minCutoff = 1.4, beta = 0.14, dCutoff = 1.0) {
+    this.minCutoff = minCutoff;
+    this.beta = beta;
+    this.dCutoff = dCutoff;
+    this.xPrev = 0;
+    this.dxPrev = 0;
+    this.initialized = false;
+  }
+
+  reset() {
+    this.xPrev = 0;
+    this.dxPrev = 0;
+    this.initialized = false;
+  }
+
+  _alpha(dt, cutoff) {
+    const tau = 1.0 / (2 * Math.PI * Math.max(0.01, cutoff));
+    return 1.0 / (1.0 + tau / Math.max(0.001, dt));
+  }
+
+  filter(x, dt) {
+    if (!this.initialized) {
+      this.initialized = true;
+      this.xPrev = x;
+      this.dxPrev = 0;
+      return x;
+    }
+    const safeDt = Math.max(0.002, Math.min(0.06, dt));
+    const dx = (x - this.xPrev) / safeDt;
+    const ed = this._alpha(safeDt, this.dCutoff);
+    const dxHat = this.dxPrev + (dx - this.dxPrev) * ed;
+    const cutoff = this.minCutoff + this.beta * Math.abs(dxHat);
+    const a = this._alpha(safeDt, cutoff);
+    const xHat = this.xPrev + (x - this.xPrev) * a;
+    this.xPrev = xHat;
+    this.dxPrev = dxHat;
+    return xHat;
+  }
+}
+
 export class InputManager {
   constructor(settings, onFirstGesture) {
     this.settings = settings;
     this.onFirstGesture = onFirstGesture;
     this._gestureFired = false;
+    this._gameplayActive = false;
+    this._currentFov = 72;
 
     this.state = {
       moveX: 0,
@@ -41,20 +84,46 @@ export class InputManager {
     this._btnDragTrackers = new Map(); // pointerId -> { x, y } for thumb-drag aiming on ADS ONLY!
     this._keys = new Set();
 
-    // Silky-smooth MEMS rotationRate Gyroscope (+ DeviceOrientation fallback)
+    // Multi-tier Screen-Frame Gyroscope Engine
     this._gyroAttached = false;
     this._gyroPermissionAsked = false;
-    this._hasRotationRate = false;
-    this._lastMotionMs = 0;
-    this._lastOrientMs = 0;
-    this._lastDeviceQuat = null;
-    this._gyroRateYaw = 0;
-    this._gyroRatePitch = 0;
-    this._gyroSmoothDX = 0;
-    this._gyroSmoothDY = 0;
+    this._genericSensorActive = false;
+    this._genericSensorBackend = 'none'; // 'gyroscope' | 'rel-orient' | 'deviceorientation' | 'devicemotion'
+    this._gyroSensor = null;
+    this._relOrientSensor = null;
+    this._hasOrientEvents = false;
+    this._lastSensorTs = 0;
+    this._lastOrientTs = 0;
+    this._lastMotionTs = 0;
+    this._lastSensorQuat = null;
+    this._lastOrientQuat = null;
+
+    // Idle drift bias tracker + calibration window
+    this._biasX = 0;
+    this._biasY = 0;
+    this._calibratingUntil = 0;
+    this._calSumX = 0;
+    this._calSumY = 0;
+    this._calCount = 0;
+
+    // Adaptive One-Euro filters for jitter-free aiming + instant flick response
+    this._filterYaw = new OneEuroFilter1D(1.5, 0.16, 1.0);
+    this._filterPitch = new OneEuroFilter1D(1.5, 0.16, 1.0);
+
+    // Scratch quaternions/vectors for orientation quaternion delta math
+    this._qZee = new THREE.Vector3(0, 0, 1);
+    this._qEuler = new THREE.Euler();
+    this._q0 = new THREE.Quaternion();
+    this._q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+    this._qCurr = new THREE.Quaternion();
+    this._qPrevInv = new THREE.Quaternion();
+    this._qDeltaW = new THREE.Quaternion();
+    this._vCamRight = new THREE.Vector3();
+    this._vAxis = new THREE.Vector3();
+
     this.gyroSupported =
       typeof window !== 'undefined' &&
-      ('DeviceMotionEvent' in window || 'DeviceOrientationEvent' in window);
+      ('Gyroscope' in window || 'RelativeOrientationSensor' in window || 'DeviceOrientationEvent' in window || 'DeviceMotionEvent' in window);
 
     this._bindLandscapeGate();
     this._bindTouchControls();
@@ -63,8 +132,64 @@ export class InputManager {
     this.applyLayoutSettings(settings);
   }
 
-  _notifyFirstGesture() {
-    this.requestFullscreenLandscape();
+  setGameplayActive(active) {
+    const next = !!active;
+    if (this._gameplayActive !== next) {
+      this._gameplayActive = next;
+      this.state.lookDX = 0;
+      this.state.lookDY = 0;
+      this._lastSensorTs = 0;
+      this._lastOrientTs = 0;
+      this._lastMotionTs = 0;
+      this._lastSensorQuat = null;
+      this._lastOrientQuat = null;
+      this._filterYaw.reset();
+      this._filterPitch.reset();
+    }
+  }
+
+  setCurrentFov(fov) {
+    this._currentFov = THREE.MathUtils.clamp(Number(fov) || 72, 20, 100);
+  }
+
+  calibrateGyro(durationMs = 450) {
+    this._calibratingUntil = performance.now() + durationMs;
+    this._calSumX = 0;
+    this._calSumY = 0;
+    this._calCount = 0;
+    this._filterYaw.reset();
+    this._filterPitch.reset();
+  }
+
+  getGyroStatusText() {
+    if (!this.gyroSupported) return 'Not available';
+    if (this.settings.gyroMode === 'off' || this.settings.gyroEnabled === false) return 'Disabled';
+    if (this._genericSensorBackend === 'gyroscope') return 'Active: Screen Gyroscope';
+    if (this._genericSensorBackend === 'rel-orient') return 'Active: Orientation Sensor';
+    if (this._hasOrientEvents) return 'Active: Quaternion Orientation';
+    if (this._genericSensorBackend === 'devicemotion') return 'Active: Rotation Rate';
+    return 'Standby (Tilt device or tap Deploy)';
+  }
+
+  _isGyroAllowedNow() {
+    if (!this._gameplayActive) return false;
+    const mode = this.settings.gyroMode || (this.settings.gyroEnabled === false ? 'off' : 'always');
+    if (mode === 'off') return false;
+    if (mode === 'ads' && !this.state.ads) return false;
+    return true;
+  }
+
+  _getAimScale(isGyro = false) {
+    // Scale turn rate proportionally with zoomed FOV so ADS scopes stay steady instead of twitching
+    const fovFactor = Math.tan(THREE.MathUtils.degToRad(this._currentFov * 0.5)) / Math.tan(THREE.MathUtils.degToRad(36));
+    const adsFactor = this.state.ads ? (this.settings.adsSensitivity ?? 0.75) : 1.0;
+    return fovFactor * (isGyro ? (this.state.ads ? Math.max(0.45, adsFactor) : 1.0) : adsFactor);
+  }
+
+  _notifyFirstGesture(triggerFullscreen = false) {
+    if (triggerFullscreen) {
+      this.requestFullscreenLandscape();
+    }
     this._requestGyroPermissionIfNeeded();
     if (!this._gestureFired) {
       this._gestureFired = true;
@@ -122,16 +247,15 @@ export class InputManager {
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
     btnForce?.addEventListener('click', () => {
-      this._notifyFirstGesture();
+      this._notifyFirstGesture(true);
       check();
     });
 
-    const onAnyTap = () => {
-      this._notifyFirstGesture();
+    // Only unlock audio & gyro permissions once on initial tap; avoid spamming Fullscreen API every click
+    const onFirstTap = () => {
+      this._notifyFirstGesture(false);
     };
-    document.addEventListener('pointerdown', onAnyTap, { capture: true, passive: true });
-    document.addEventListener('pointerup', onAnyTap, { capture: true, passive: true });
-    document.addEventListener('click', onAnyTap, { capture: true, passive: true });
+    document.addEventListener('pointerdown', onFirstTap, { capture: true, passive: true, once: true });
 
     check();
   }
@@ -146,90 +270,170 @@ export class InputManager {
     }
   }
 
+  _tryStartGenericSensors() {
+    // Tier 1: Screen-Reference Gyroscope API (Android Chrome — unambiguously aligns X=Pitch, Y=Yaw with landscape/portrait screen!)
+    if (typeof window.Gyroscope === 'function') {
+      try {
+        const sensor = new window.Gyroscope({ frequency: 60, referenceFrame: 'screen' });
+        sensor.addEventListener('reading', () => {
+          this._genericSensorActive = true;
+          this._genericSensorBackend = 'gyroscope';
+
+          const now = sensor.timestamp || performance.now();
+          if (!this._lastSensorTs) {
+            this._lastSensorTs = now;
+            return;
+          }
+          const dt = THREE.MathUtils.clamp((now - this._lastSensorTs) / 1000, 0.002, 0.06);
+          this._lastSensorTs = now;
+
+          let rx = Number(sensor.x) || 0; // Pitch rate (rad/s) around horizontal screen axis (+ = tilt top toward user = look up)
+          let ry = Number(sensor.y) || 0; // Yaw rate (rad/s) around vertical screen axis (+ = turn left, - = turn right)
+
+          if (this.settings.gyroSwapAxes) {
+            const tmp = rx;
+            rx = ry;
+            ry = tmp;
+          }
+
+          if (Math.abs(rx) > 8.5 || Math.abs(ry) > 8.5) return;
+
+          // Explicit user calibration or subtle automatic steady-hand bias subtraction (kills zero-rate drift!)
+          if (performance.now() < this._calibratingUntil) {
+            this._calSumX += rx;
+            this._calSumY += ry;
+            this._calCount++;
+            this._biasX = this._calSumX / this._calCount;
+            this._biasY = this._calSumY / this._calCount;
+            return;
+          }
+          if (Math.abs(rx - this._biasX) < 0.032 && Math.abs(ry - this._biasY) < 0.032) {
+            this._biasX += (rx - this._biasX) * 0.025;
+            this._biasY += (ry - this._biasY) * 0.025;
+          }
+
+          rx -= this._biasX;
+          ry -= this._biasY;
+
+          // Tiny noise gate
+          const dz = 0.004;
+          const cleanPitch = Math.abs(rx) < dz ? 0 : rx - Math.sign(rx) * dz;
+          const cleanYaw = Math.abs(ry) < dz ? 0 : ry - Math.sign(ry) * dz;
+
+          const filtYaw = this._filterYaw.filter(-cleanYaw, dt);
+          const filtPitch = this._filterPitch.filter(-cleanPitch * (this.settings.gyroInvertY ? -1 : 1), dt);
+
+          if (!this._isGyroAllowedNow()) return;
+          const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.92 * this._getAimScale(true);
+          this.state.lookDX += filtYaw * dt * sens;
+          this.state.lookDY += filtPitch * dt * sens;
+        });
+        sensor.addEventListener('error', () => {
+          this._genericSensorActive = false;
+          if (this._genericSensorBackend === 'gyroscope') this._genericSensorBackend = 'none';
+          this._tryStartRelativeOrientationSensor();
+        });
+        sensor.start();
+        this._gyroSensor = sensor;
+        return;
+      } catch {
+        this._tryStartRelativeOrientationSensor();
+        return;
+      }
+    }
+    this._tryStartRelativeOrientationSensor();
+  }
+
+  _tryStartRelativeOrientationSensor() {
+    if (typeof window.RelativeOrientationSensor !== 'function') return;
+    try {
+      const sensor = new window.RelativeOrientationSensor({ frequency: 60, referenceFrame: 'screen' });
+      sensor.addEventListener('reading', () => {
+        const q = sensor.quaternion;
+        if (!q || q.length < 4) return;
+        this._genericSensorActive = true;
+        this._genericSensorBackend = 'rel-orient';
+
+        const now = sensor.timestamp || performance.now();
+        const dt = this._lastSensorTs ? THREE.MathUtils.clamp((now - this._lastSensorTs) / 1000, 0.004, 0.06) : 0.016;
+        this._lastSensorTs = now;
+
+        this._qCurr.set(q[0], q[1], q[2], q[3]).normalize();
+        if (!this._lastSensorQuat) {
+          this._lastSensorQuat = this._qCurr.clone();
+          return;
+        }
+        this._extractWorldUpPitchDelta(this._lastSensorQuat, this._qCurr, dt);
+        this._lastSensorQuat.copy(this._qCurr);
+      });
+      sensor.addEventListener('error', () => {
+        this._genericSensorActive = false;
+        if (this._genericSensorBackend === 'rel-orient') this._genericSensorBackend = 'none';
+      });
+      sensor.start();
+      this._relOrientSensor = sensor;
+    } catch {
+      // Fall through cleanly to DeviceOrientation listener
+    }
+  }
+
+  _extractWorldUpPitchDelta(prevQ, currQ, dt) {
+    // dqWorld rotates previous world frame orientation into current: currQ = dqWorld * prevQ
+    this._qPrevInv.copy(prevQ).invert();
+    this._qDeltaW.multiplyQuaternions(currQ, this._qPrevInv).normalize();
+    if (this._qDeltaW.w < 0) {
+      this._qDeltaW.set(-this._qDeltaW.x, -this._qDeltaW.y, -this._qDeltaW.z, -this._qDeltaW.w);
+    }
+    const wClamped = THREE.MathUtils.clamp(this._qDeltaW.w, -1, 1);
+    const theta = 2 * Math.acos(wClamped);
+    if (theta < 0.00015 || theta > 0.45) return; // Reject wrap/gimbal jumps or micro-noise
+
+    const sinHalf = Math.sqrt(Math.max(1e-8, 1 - wClamped * wClamped));
+    this._vAxis.set(this._qDeltaW.x / sinHalf, this._qDeltaW.y / sinHalf, this._qDeltaW.z / sinHalf);
+
+    // Yaw around Gravity Vertical (0,1,0) and Pitch around Screen Horizontal Right axis -> Zero roll coupling!
+    this._vCamRight.set(1, 0, 0).applyQuaternion(currQ);
+    // Note: in Three.js Y-up vs ENU Z-up, RelativeOrientationSensor screen quat uses world Z-up while DeviceOrientationControls converts to Y-up.
+    const worldUpDot = this._genericSensorBackend === 'rel-orient' ? this._vAxis.z : this._vAxis.y;
+    let dYawRad = worldUpDot * theta;
+    let dPitchRad = this._vAxis.dot(this._vCamRight) * theta;
+
+    if (this.settings.gyroSwapAxes) {
+      const tmp = dYawRad;
+      dYawRad = dPitchRad;
+      dPitchRad = tmp;
+    }
+
+    const rateYaw = this._filterYaw.filter(-dYawRad / dt, dt);
+    const ratePitch = this._filterPitch.filter((-dPitchRad / dt) * (this.settings.gyroInvertY ? -1 : 1), dt);
+
+    if (!this._isGyroAllowedNow()) return;
+    const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.90 * this._getAimScale(true);
+    this.state.lookDX += rateYaw * dt * sens;
+    this.state.lookDY += ratePitch * dt * sens;
+  }
+
   _attachGyroListener() {
     if (this._gyroAttached) return;
     this._gyroAttached = true;
 
-    // Primary: Raw high-frequency MEMS rotationRate (zero quantization layers!)
-    window.addEventListener('devicemotion', (e) => {
-      const rr = e.rotationRate;
-      if (!this.settings.gyroEnabled || !rr || rr.beta == null || rr.gamma == null) {
-        this._lastMotionMs = 0;
-        this._gyroRateYaw = 0;
-        this._gyroRatePitch = 0;
-        return;
-      }
+    this._tryStartGenericSensors();
 
-      this._hasRotationRate = true;
-      const now = performance.now();
-      if (!this._lastMotionMs) {
-        this._lastMotionMs = now;
-        return;
-      }
-      const dt = THREE.MathUtils.clamp((now - this._lastMotionMs) / 1000, 0.002, 0.045);
-      this._lastMotionMs = now;
-
-      const angle = ((screen.orientation?.angle ?? window.orientation ?? 90) % 360 + 360) % 360;
-      let rawYawDegPerSec = 0;
-      let rawPitchDegPerSec = 0;
-
-      if (angle === 90) {
-        rawYawDegPerSec = -rr.beta;
-        rawPitchDegPerSec = rr.gamma;
-      } else if (angle === 270) {
-        rawYawDegPerSec = rr.beta;
-        rawPitchDegPerSec = -rr.gamma;
-      } else if (angle === 180) {
-        rawYawDegPerSec = rr.gamma;
-        rawPitchDegPerSec = rr.beta;
-      } else {
-        rawYawDegPerSec = -rr.gamma;
-        rawPitchDegPerSec = -rr.beta;
-      }
-
-      // Reject absurd sensor glitches without clipping fast flicks
-      if (Math.abs(rawYawDegPerSec) > 420 || Math.abs(rawPitchDegPerSec) > 420) return;
-
-      // Soft deadzone eliminates idle MEMS drift cleanly without stepping
-      const dz = 0.14;
-      const cleanYaw = Math.abs(rawYawDegPerSec) < dz
-        ? 0
-        : Math.sign(rawYawDegPerSec) * (Math.abs(rawYawDegPerSec) - dz);
-      const cleanPitch = Math.abs(rawPitchDegPerSec) < dz
-        ? 0
-        : Math.sign(rawPitchDegPerSec) * (Math.abs(rawPitchDegPerSec) - dz);
-
-      // Frame-rate-independent 1-pole EMA low-pass (tau = 16ms: zero stagger, minimal latency)
-      const alpha = 1 - Math.exp(-dt / 0.016);
-      this._gyroRateYaw += (cleanYaw - this._gyroRateYaw) * alpha;
-      this._gyroRatePitch += (cleanPitch - this._gyroRatePitch) * alpha;
-
-      const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.85;
-      this.state.lookDX += THREE.MathUtils.degToRad(this._gyroRateYaw) * dt * sens;
-      this.state.lookDY += THREE.MathUtils.degToRad(this._gyroRatePitch) * dt * sens;
-    });
-
-    // Fallback: Quaternion delta from deviceorientation ONLY when rotationRate is unavailable
-    const zee = new THREE.Vector3(0, 0, 1);
-    const euler = new THREE.Euler();
-    const q0 = new THREE.Quaternion();
-    const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-    const currQ = new THREE.Quaternion();
-    const deltaQ = new THREE.Quaternion();
-    const prevInv = new THREE.Quaternion();
-    const deltaEuler = new THREE.Euler(0, 0, 0, 'YXZ');
-
+    // Tier 3: Fused DeviceOrientation Quaternion Delta (World-Up Yaw + Screen-Right Pitch — works cleanly on iOS & fallback Android)
     window.addEventListener('deviceorientation', (e) => {
-      if (this._hasRotationRate) return;
-      if (!this.settings.gyroEnabled || e.alpha == null || e.beta == null || e.gamma == null) {
-        this._lastDeviceQuat = null;
-        this._lastOrientMs = 0;
+      if (this._genericSensorActive) return;
+      if (e.alpha == null || e.beta == null || e.gamma == null) {
+        this._lastOrientQuat = null;
+        this._lastOrientTs = 0;
         return;
       }
 
-      const now = performance.now();
-      const dt = this._lastOrientMs ? THREE.MathUtils.clamp((now - this._lastOrientMs) / 1000, 0.004, 0.05) : 0.016;
-      this._lastOrientMs = now;
+      this._hasOrientEvents = true;
+      if (this._genericSensorBackend === 'none') this._genericSensorBackend = 'deviceorientation';
+
+      const now = e.timeStamp || performance.now();
+      const dt = this._lastOrientTs ? THREE.MathUtils.clamp((now - this._lastOrientTs) / 1000, 0.004, 0.06) : 0.016;
+      this._lastOrientTs = now;
 
       const alphaAng = THREE.MathUtils.degToRad(e.alpha);
       const betaAng = THREE.MathUtils.degToRad(e.beta);
@@ -238,34 +442,76 @@ export class InputManager {
         screen.orientation?.angle ?? window.orientation ?? 90
       );
 
-      euler.set(betaAng, alphaAng, -gammaAng, 'YXZ');
-      currQ.setFromEuler(euler);
-      currQ.multiply(q1);
-      currQ.multiply(q0.setFromAxisAngle(zee, -orientAngle));
+      this._qEuler.set(betaAng, alphaAng, -gammaAng, 'YXZ');
+      this._qCurr.setFromEuler(this._qEuler);
+      this._qCurr.multiply(this._q1);
+      this._qCurr.multiply(this._q0.setFromAxisAngle(this._qZee, -orientAngle));
 
-      if (!this._lastDeviceQuat) {
-        this._lastDeviceQuat = currQ.clone();
+      if (!this._lastOrientQuat) {
+        this._lastOrientQuat = this._qCurr.clone();
         return;
       }
 
-      prevInv.copy(this._lastDeviceQuat).invert();
-      deltaQ.multiplyQuaternions(prevInv, currQ);
-      this._lastDeviceQuat.copy(currQ);
+      this._extractWorldUpPitchDelta(this._lastOrientQuat, this._qCurr, dt);
+      this._lastOrientQuat.copy(this._qCurr);
+    });
 
-      deltaEuler.setFromQuaternion(deltaQ, 'YXZ');
-      if (Math.abs(deltaEuler.y) > 0.8 || Math.abs(deltaEuler.x) > 0.8) return;
+    // Tier 4: Legacy DeviceMotionEvent.rotationRate ONLY when neither Generic Sensors nor DeviceOrientation exist
+    window.addEventListener('devicemotion', (e) => {
+      if (this._genericSensorActive || this._hasOrientEvents) return;
+      const rr = e.rotationRate;
+      if (!rr || rr.beta == null || rr.alpha == null || rr.gamma == null) return;
+      if (this._genericSensorBackend === 'none') this._genericSensorBackend = 'devicemotion';
 
-      const rawDY = Math.abs(deltaEuler.y) < 0.00025 ? 0 : deltaEuler.y;
-      const rawDX = Math.abs(deltaEuler.x) < 0.00025 ? 0 : deltaEuler.x;
-      const gyroSens = (this.settings.gyroSensitivity ?? 1.0) * 0.65;
-      const targetDX = -rawDY * gyroSens;
-      const targetDY = -rawDX * gyroSens;
+      const now = e.timeStamp || performance.now();
+      if (!this._lastMotionTs) {
+        this._lastMotionTs = now;
+        return;
+      }
+      const dt = THREE.MathUtils.clamp((now - this._lastMotionTs) / 1000, 0.002, 0.06);
+      this._lastMotionTs = now;
 
-      const smoothAlpha = 1 - Math.exp(-dt / 0.024);
-      this._gyroSmoothDX += (targetDX - this._gyroSmoothDX) * smoothAlpha;
-      this._gyroSmoothDY += (targetDY - this._gyroSmoothDY) * smoothAlpha;
-      this.state.lookDX += this._gyroSmoothDX;
-      this.state.lookDY += this._gyroSmoothDY;
+      const angle = ((screen.orientation?.angle ?? window.orientation ?? 90) % 360 + 360) % 360;
+      let rawYawDegPerSec = 0;
+      let rawPitchDegPerSec = 0;
+
+      // W3C spec: alpha=around Z(normal), beta=around X(short), gamma=around Y(long)
+      if (angle === 90) {
+        rawYawDegPerSec = -rr.beta;
+        rawPitchDegPerSec = -rr.gamma;
+      } else if (angle === 270) {
+        rawYawDegPerSec = rr.beta;
+        rawPitchDegPerSec = rr.gamma;
+      } else if (angle === 180) {
+        rawYawDegPerSec = rr.gamma;
+        rawPitchDegPerSec = rr.beta;
+      } else {
+        rawYawDegPerSec = -rr.gamma;
+        rawPitchDegPerSec = -rr.beta;
+      }
+
+      if (this.settings.gyroSwapAxes) {
+        const tmp = rawYawDegPerSec;
+        rawYawDegPerSec = rawPitchDegPerSec;
+        rawPitchDegPerSec = tmp;
+      }
+
+      if (Math.abs(rawYawDegPerSec) > 420 || Math.abs(rawPitchDegPerSec) > 420) return;
+
+      const dz = 0.16;
+      const cleanYaw = Math.abs(rawYawDegPerSec) < dz ? 0 : rawYawDegPerSec - Math.sign(rawYawDegPerSec) * dz;
+      const cleanPitch = Math.abs(rawPitchDegPerSec) < dz ? 0 : rawPitchDegPerSec - Math.sign(rawPitchDegPerSec) * dz;
+
+      const fy = this._filterYaw.filter(THREE.MathUtils.degToRad(cleanYaw), dt);
+      const fp = this._filterPitch.filter(
+        THREE.MathUtils.degToRad(cleanPitch) * (this.settings.gyroInvertY ? -1 : 1),
+        dt
+      );
+
+      if (!this._isGyroAllowedNow()) return;
+      const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.85 * this._getAimScale(true);
+      this.state.lookDX += fy * dt * sens;
+      this.state.lookDY += fp * dt * sens;
     });
   }
 
@@ -302,12 +548,13 @@ export class InputManager {
     this._fireQueued = false;
     this._joyPointerId = null;
     this._lookPointerId = null;
-    this._lastDeviceQuat = null;
-    this._lastMotionMs = 0;
-    this._gyroRateYaw = 0;
-    this._gyroRatePitch = 0;
-    this._gyroSmoothDX = 0;
-    this._gyroSmoothDY = 0;
+    this._lastSensorTs = 0;
+    this._lastOrientTs = 0;
+    this._lastMotionTs = 0;
+    this._lastSensorQuat = null;
+    this._lastOrientQuat = null;
+    this._filterYaw.reset();
+    this._filterPitch.reset();
     this._btnDragTrackers.clear();
     ['btn-fire', 'btn-ads'].forEach((id) => {
       document.getElementById(id)?.classList.remove('active');
@@ -442,6 +689,7 @@ export class InputManager {
         };
         el.addEventListener('pointerup', endDrag);
         el.addEventListener('pointercancel', endDrag);
+        el.addEventListener('lostpointercapture', endDrag);
 
         stage.appendChild(el);
       }
@@ -514,7 +762,7 @@ export class InputManager {
     });
 
     joyZone.addEventListener('pointerdown', (e) => {
-      this._notifyFirstGesture();
+      this._notifyFirstGesture(false);
       if (this._joyPointerId !== null) return;
       this._joyPointerId = e.pointerId;
       this._sprintLocked = false;
@@ -550,7 +798,7 @@ export class InputManager {
       }
 
       // PUBG-style upper Sprint-Lock zone: dragging stick straight past top edge locks auto-sprint!
-      const inLockZone = rawDy < -maxRadius * 1.24 && Math.abs(rawDx) < maxRadius * 0.92;
+      const inLockZone = rawDy < -maxRadius * 1.22 && Math.abs(rawDx) < maxRadius * 0.92;
       this._sprintLocked = inLockZone;
 
       if (inLockZone) {
@@ -564,10 +812,23 @@ export class InputManager {
         }
       } else {
         joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
-        this.state.moveX = Math.abs(dx / maxRadius) < 0.08 ? 0 : dx / maxRadius;
-        this.state.moveY = Math.abs(dy / maxRadius) < 0.08 ? 0 : -dy / maxRadius;
-        const autoSprint = this.state.moveY > 0.78;
+        const nx = dx / maxRadius;
+        const ny = -dy / maxRadius;
+        const mag = Math.hypot(nx, ny);
+        if (mag < 0.12) {
+          this.state.moveX = 0;
+          this.state.moveY = 0;
+        } else {
+          // Rescale [0.12..1.0] smoothly so inner zone walks quietly (PUBG feel) and outer pushes to full run/sprint
+          const normMag = (Math.min(1, mag) - 0.12) / 0.88;
+          const curved = normMag < 0.65 ? normMag * 0.72 : 0.47 + (normMag - 0.65) * 1.51;
+          const scale = Math.min(1, curved) / Math.max(1e-4, mag);
+          this.state.moveX = nx * scale;
+          this.state.moveY = ny * scale;
+        }
+        const autoSprint = this.state.moveY > 0.72;
         this.state.sprint = autoSprint;
+        if (this.state.moveY < -0.25) this._sprintLocked = false;
         joyBase.classList.toggle('sprinting', autoSprint);
         if (joyLatch) {
           joyLatch.classList.remove('locked');
@@ -599,9 +860,10 @@ export class InputManager {
     };
     joyZone.addEventListener('pointerup', resetJoy);
     joyZone.addEventListener('pointercancel', resetJoy);
+    joyZone.addEventListener('lostpointercapture', resetJoy);
 
     lookZone.addEventListener('pointerdown', (e) => {
-      this._notifyFirstGesture();
+      this._notifyFirstGesture(false);
       if (this._lookPointerId !== null) return;
       this._lookPointerId = e.pointerId;
       this._lookLast = { x: e.clientX, y: e.clientY };
@@ -620,6 +882,7 @@ export class InputManager {
     };
     lookZone.addEventListener('pointerup', resetLook);
     lookZone.addEventListener('pointercancel', resetLook);
+    lookZone.addEventListener('lostpointercapture', resetLook);
 
     // Pure Hold-Only Button (NO camera aim movement on finger slide — dedicated to Fire!)
     const bindHoldOnly = (id, onDown, onUp) => {
@@ -628,7 +891,7 @@ export class InputManager {
       let activePid = null;
       el.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        this._notifyFirstGesture();
+        this._notifyFirstGesture(false);
         activePid = e.pointerId;
         try { el.setPointerCapture(e.pointerId); } catch {}
         onDown(el, e);
@@ -643,6 +906,7 @@ export class InputManager {
       };
       el.addEventListener('pointerup', finish);
       el.addEventListener('pointercancel', finish);
+      el.addEventListener('lostpointercapture', finish);
     };
 
     // Hold + Thumb-Drag Camera Aim (for ADS button so scoped tracking stays effortless)
@@ -651,7 +915,7 @@ export class InputManager {
       if (!el) return;
       el.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        this._notifyFirstGesture();
+        this._notifyFirstGesture(false);
         try { el.setPointerCapture(e.pointerId); } catch {}
         this._btnDragTrackers.set(e.pointerId, { x: e.clientX, y: e.clientY });
         onDown(el, e);
@@ -665,11 +929,13 @@ export class InputManager {
         prev.y = e.clientY;
       });
       const finish = (e) => {
+        if (!this._btnDragTrackers.has(e.pointerId)) return;
         this._btnDragTrackers.delete(e.pointerId);
         onUp(el, e);
       };
       el.addEventListener('pointerup', finish);
       el.addEventListener('pointercancel', finish);
+      el.addEventListener('lostpointercapture', finish);
     };
 
     // FIRE ONLY fires (sliding finger on #btn-fire NEVER rotates aim!)
@@ -711,7 +977,7 @@ export class InputManager {
       const el = document.getElementById(id);
       el?.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        this._notifyFirstGesture();
+        this._notifyFirstGesture(false);
         this.state[key] = !this.state[key];
         el.classList.toggle('active', this.state[key]);
         if (onToggle) onToggle(this.state[key]);
@@ -722,7 +988,7 @@ export class InputManager {
       const el = document.getElementById(id);
       el?.addEventListener('pointerdown', (e) => {
         e.stopPropagation();
-        this._notifyFirstGesture();
+        this._notifyFirstGesture(false);
         this.state[key] = true;
       });
     };
@@ -738,7 +1004,7 @@ export class InputManager {
   }
 
   _applyLookDelta(rawDX, rawDY) {
-    const sens = 0.0050 * (this.settings.sensitivity || 1.6);
+    const sens = 0.0050 * (this.settings.sensitivity || 1.6) * this._getAimScale(false);
     const dx = Math.max(-180, Math.min(180, rawDX));
     const dy = Math.max(-180, Math.min(180, rawDY));
     this.state.lookDX += dx * sens;

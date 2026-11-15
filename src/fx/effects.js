@@ -17,11 +17,14 @@ const SURFACE_COLORS = {
 export class EffectsSystem {
   constructor(scene) {
     this.scene = scene;
+    this._vP = new THREE.Vector3();
+    this._vN = new THREE.Vector3();
+    this._vLook = new THREE.Vector3();
+    this._vJitter = new THREE.Vector3();
 
-    // Pooled muzzle light
-    this.muzzleLight = new THREE.PointLight(0xffc272, 0, 7.5, 2);
-    this.scene.add(this.muzzleLight);
+    // Muzzle flash timer (drives viewmodel weapon illumination pulse with 0 PointLights!)
     this._muzzleTimer = 0;
+    this.muzzleIntensity = 0;
 
     // Decals pool (max 64)
     this.decals = [];
@@ -42,10 +45,10 @@ export class EffectsSystem {
       this.decals.push(mesh);
     }
 
-    // Subtle realistic ballistic bullet glints (ultra-thin fast streak, no cartoon lasers)
+    // Subtle realistic ballistic bullet glints (visible at close & long range, zero cartoon laser feel)
     this.tracers = [];
     this._tracerIndex = 0;
-    const tracerGeo = new THREE.CylinderGeometry(0.0010, 0.0018, 1, 4, 1, true);
+    const tracerGeo = new THREE.CylinderGeometry(0.0014, 0.0022, 1, 4, 1, true);
     tracerGeo.rotateX(Math.PI / 2);
     for (let i = 0; i < MAX_TRACERS; i++) {
       const mat = new THREE.MeshBasicMaterial({
@@ -64,18 +67,18 @@ export class EffectsSystem {
         dir: new THREE.Vector3(),
         totalDist: 0,
         traveled: 0,
-        speed: 310,
-        streakLen: 0.72,
+        speed: 240,
+        streakLen: 0.85,
         fadeLife: 0,
         active: false,
       });
     }
 
-    // Shell casings pool
+    // Shell casings pool (lightweight MeshBasicMaterial for zero lighting pass cost)
     this.casings = [];
     this._casingIndex = 0;
     const casingGeo = new THREE.CylinderGeometry(0.006, 0.006, 0.028, 5);
-    const casingMat = new THREE.MeshStandardMaterial({ color: 0xc29e4c, roughness: 0.35, metalness: 0.72 });
+    const casingMat = new THREE.MeshBasicMaterial({ color: 0xc29e4c });
     for (let i = 0; i < MAX_CASINGS; i++) {
       const mesh = new THREE.Mesh(casingGeo, casingMat);
       mesh.visible = false;
@@ -106,31 +109,30 @@ export class EffectsSystem {
     }
   }
 
-  triggerMuzzleFlash(worldPos) {
-    this.muzzleLight.position.copy(worldPos);
-    this.muzzleLight.intensity = 3.2;
-    this._muzzleTimer = 0.036;
+  triggerMuzzleFlash(_worldPos) {
+    this.muzzleIntensity = 1.0;
+    this._muzzleTimer = 0.042;
   }
 
   spawnTracer(start, end) {
     const t = this.tracers[this._tracerIndex];
     this._tracerIndex = (this._tracerIndex + 1) % MAX_TRACERS;
     const dist = start.distanceTo(end);
-    if (dist < 0.7) return;
+    if (dist < 0.65) return;
 
     t.start.copy(start);
     t.dir.subVectors(end, start).normalize();
     t.totalDist = Math.min(dist, 95);
-    t.streakLen = Math.min(0.72, t.totalDist * 0.25);
-    t.traveled = Math.min(t.streakLen * 1.15, t.totalDist * 0.28);
-    t.fadeLife = 0.022;
+    t.streakLen = Math.min(1.1, Math.max(0.28, t.totalDist * 0.32));
+    t.traveled = t.totalDist < 16 ? t.totalDist : Math.min(t.streakLen * 1.25, t.totalDist * 0.25);
+    t.fadeLife = 0.055;
     t.active = true;
 
-    const curLen = Math.max(0.18, Math.min(t.streakLen, t.traveled));
-    t.mesh.position.copy(t.start).addScaledVector(t.dir, Math.max(0, t.traveled - curLen * 0.5));
+    const curLen = t.totalDist < 16 ? Math.min(t.totalDist * 0.72, 1.8) : Math.max(0.24, Math.min(t.streakLen, t.traveled));
+    t.mesh.position.copy(t.start).addScaledVector(t.dir, Math.max(curLen * 0.5, t.traveled - curLen * 0.5));
     t.mesh.lookAt(end);
     t.mesh.scale.set(1, 1, curLen);
-    t.mesh.material.opacity = 0.44;
+    t.mesh.material.opacity = 0.56;
     t.mesh.visible = true;
   }
 
@@ -149,14 +151,15 @@ export class EffectsSystem {
   }
 
   spawnImpact(point, normal, material = 'concrete') {
-    const p = new THREE.Vector3(point.x, point.y, point.z);
-    const n = new THREE.Vector3(normal.x, normal.y, normal.z).normalize();
+    this._vP.set(point.x, point.y, point.z);
+    this._vN.set(normal.x, normal.y, normal.z).normalize();
 
     if (material !== 'enemy') {
       const decal = this.decals[this._decalIndex];
       this._decalIndex = (this._decalIndex + 1) % MAX_DECALS;
-      decal.position.copy(p).addScaledVector(n, 0.008);
-      decal.lookAt(p.clone().add(n));
+      decal.position.copy(this._vP).addScaledVector(this._vN, 0.008);
+      this._vLook.copy(this._vP).add(this._vN);
+      decal.lookAt(this._vLook);
       decal.rotateZ(Math.random() * Math.PI * 2);
       decal.material.color.setHex(material === 'wood' ? 0x2b2016 : material === 'metal' ? 0x16171a : 0x201f1d);
       decal.visible = true;
@@ -167,16 +170,17 @@ export class EffectsSystem {
     for (let i = 0; i < count; i++) {
       const part = this.particles[this._particleIndex];
       this._particleIndex = (this._particleIndex + 1) % MAX_PARTICLES;
-      part.mesh.position.copy(p).addScaledVector(n, 0.03);
+      part.mesh.position.copy(this._vP).addScaledVector(this._vN, 0.03);
       part.mesh.material.color.setHex(colorHex);
       part.mesh.material.opacity = 0.95;
       part.mesh.scale.setScalar(material === 'dirt' ? 1.5 : 0.95);
       part.mesh.visible = true;
       const spread = material === 'metal' ? 4.2 : 2.3;
+      this._vJitter.set((Math.random() - 0.5) * spread, Math.random() * 1.7, (Math.random() - 0.5) * spread);
       part.vel
-        .copy(n)
+        .copy(this._vN)
         .multiplyScalar(1.9 + Math.random() * 2.4)
-        .add(new THREE.Vector3((Math.random() - 0.5) * spread, Math.random() * 1.7, (Math.random() - 0.5) * spread));
+        .add(this._vJitter);
       part.maxLife = material === 'dirt' ? 0.45 : 0.28;
       part.life = part.maxLife;
     }
@@ -185,7 +189,9 @@ export class EffectsSystem {
   update(dt) {
     if (this._muzzleTimer > 0) {
       this._muzzleTimer -= dt;
-      if (this._muzzleTimer <= 0) this.muzzleLight.intensity = 0;
+      this.muzzleIntensity = Math.max(0, this._muzzleTimer / 0.042);
+    } else {
+      this.muzzleIntensity = 0;
     }
 
     for (const t of this.tracers) {
@@ -197,10 +203,10 @@ export class EffectsSystem {
         const centerDist = Math.max(curLen * 0.5, headDist - curLen * 0.5);
         t.mesh.position.copy(t.start).addScaledVector(t.dir, centerDist);
         t.mesh.scale.set(1, 1, curLen);
-        t.mesh.material.opacity = 0.48;
+        t.mesh.material.opacity = 0.52;
       } else {
         t.fadeLife -= dt;
-        t.mesh.material.opacity = Math.max(0, (t.fadeLife / 0.025) * 0.45);
+        t.mesh.material.opacity = Math.max(0, (t.fadeLife / 0.055) * 0.50);
         if (t.fadeLife <= 0) {
           t.mesh.visible = false;
           t.active = false;

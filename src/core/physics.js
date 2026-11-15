@@ -1,5 +1,8 @@
+import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { FIXED_DT } from './config.js';
+
+const _tmpQuat = new THREE.Quaternion();
 
 export class PhysicsWorld {
   constructor() {
@@ -7,12 +10,14 @@ export class PhysicsWorld {
     this.world = null;
     this.colliderMeta = new Map(); // collider.handle -> { material, kind, ref, mesh, penetrable }
     this.dynamicBodies = []; // { body, mesh, prevPos, prevQuat, currPos, currQuat }
+    this._scratchRay = null;
   }
 
   async init() {
     await RAPIER.init();
     this.world = new RAPIER.World({ x: 0.0, y: -18.0, z: 0.0 });
     this.world.timestep = FIXED_DT;
+    this._scratchRay = new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: -1 });
   }
 
   reset() {
@@ -117,17 +122,25 @@ export class PhysicsWorld {
         prevPos.y + (currPos.y - prevPos.y) * alpha,
         prevPos.z + (currPos.z - prevPos.z) * alpha
       );
-      mesh.quaternion.set(prevQuat.x, prevQuat.y, prevQuat.z, prevQuat.w).slerp(
-        { x: currQuat.x, y: currQuat.y, z: currQuat.z, w: currQuat.w },
-        alpha
-      );
+      _tmpQuat.set(currQuat.x, currQuat.y, currQuat.z, currQuat.w);
+      mesh.quaternion.set(prevQuat.x, prevQuat.y, prevQuat.z, prevQuat.w).slerp(_tmpQuat, alpha);
     }
   }
 
   castRay(origin, dir, maxDist = 120, excludeCollider = null) {
-    const ray = new RAPIER.Ray(origin, dir);
+    if (!this.world) return null;
+    if (!this._scratchRay) {
+      this._scratchRay = new RAPIER.Ray(origin, dir);
+    } else {
+      this._scratchRay.origin.x = origin.x;
+      this._scratchRay.origin.y = origin.y;
+      this._scratchRay.origin.z = origin.z;
+      this._scratchRay.dir.x = dir.x;
+      this._scratchRay.dir.y = dir.y;
+      this._scratchRay.dir.z = dir.z;
+    }
     const hit = this.world.castRayAndGetNormal(
-      ray,
+      this._scratchRay,
       maxDist,
       true,
       undefined,

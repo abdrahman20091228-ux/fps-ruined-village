@@ -1,83 +1,88 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-14T12:51:12.224Z",
-  "totalBytes": 5294569,
-  "fileCount": 73,
+  "generatedAt": "2026-11-15T11:38:30.679Z",
+  "totalBytes": 5078942,
+  "fileCount": 78,
   "categories": {
-    "code": 254601,
+    "code": 424718,
     "models": 3390120,
-    "textures": 1492322,
+    "textures": 1106578,
     "audio": 157526
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 27652,
+      "size": 36375,
       "category": "code"
     },
     {
       "path": "src/audio/audioSystem.js",
-      "size": 13851,
+      "size": 17177,
       "category": "code"
     },
     {
       "path": "src/core/assetLoader.js",
-      "size": 6326,
+      "size": 7660,
       "category": "code"
     },
     {
       "path": "src/core/config.js",
-      "size": 1939,
+      "size": 2393,
       "category": "code"
     },
     {
       "path": "src/core/engine.js",
-      "size": 10910,
+      "size": 8281,
+      "category": "code"
+    },
+    {
+      "path": "src/core/lightProbes.js",
+      "size": 6171,
       "category": "code"
     },
     {
       "path": "src/core/physics.js",
-      "size": 5607,
+      "size": 6134,
       "category": "code"
     },
     {
       "path": "src/fx/effects.js",
-      "size": 7755,
+      "size": 8114,
       "category": "code"
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 29817,
+      "size": 40423,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 32165,
+      "size": 41349,
       "category": "code"
     },
     {
       "path": "src/player/controller.js",
-      "size": 7006,
+      "size": 7704,
       "category": "code"
     },
     {
       "path": "src/styles.css",
-      "size": 24498,
+      "size": 27187,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 24466,
+      "size": 26872,
       "category": "code"
     },
     {
       "path": "src/world/doors.js",
-      "size": 3395,
+      "size": 6315,
       "category": "code"
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 59214,
+      "size": 73621,
       "category": "code"
     },
     {
@@ -174,6 +179,16 @@
       "path": "assets/audio/wind_ambience.ogg",
       "size": 33142,
       "category": "audio"
+    },
+    {
+      "path": "assets/baked/light_probes.bin",
+      "size": 10788,
+      "category": "code"
+    },
+    {
+      "path": "assets/baked/world_vertex_gi.bin",
+      "size": 98154,
+      "category": "code"
     },
     {
       "path": "assets/models/akm.glb",
@@ -337,7 +352,7 @@
     },
     {
       "path": "assets/textures/asphalt.webp",
-      "size": 204978,
+      "size": 94000,
       "category": "textures"
     },
     {
@@ -352,7 +367,12 @@
     },
     {
       "path": "assets/textures/dirt.webp",
-      "size": 230686,
+      "size": 109558,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/lightmap_ground.webp",
+      "size": 19800,
       "category": "textures"
     },
     {
@@ -362,12 +382,17 @@
     },
     {
       "path": "assets/textures/plaster.webp",
-      "size": 189550,
+      "size": 83564,
       "category": "textures"
     },
     {
       "path": "assets/textures/roof_tiles.webp",
-      "size": 128650,
+      "size": 60304,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/shadow_blob.webp",
+      "size": 894,
       "category": "textures"
     },
     {

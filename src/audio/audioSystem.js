@@ -17,6 +17,9 @@ export class AudioSystem {
     this.isIndoors = false;
     this.indoorZones = []; // [{ minX, maxX, minY, maxY, minZ, maxZ }]
     this.listenerPos = { x: 0, y: 1.6, z: 0 };
+    this._active3DVoices = 0;
+    this._max3DVoices = 14;
+    this._scratchDir = { x: 0, y: 0, z: -1 };
   }
 
   setIndoorZones(zones) {
@@ -52,7 +55,7 @@ export class AudioSystem {
   _buildGraph() {
     const ctx = this.ctx;
     this.masterGain = ctx.createGain();
-    this.masterGain.gain.value = this.settings.volume ?? 0.8;
+    this.masterGain.gain.value = this.settings.volume ?? 0.85;
     this.masterGain.connect(ctx.destination);
 
     // Subtle stereo master bus
@@ -60,7 +63,7 @@ export class AudioSystem {
     this.sfxBus.gain.value = 1.0;
     this.sfxBus.connect(this.masterGain);
 
-    // Outdoor wide stereo slapback bus (subtle early reflection without smearing 3D localization!)
+    // Outdoor wide stereo slapback bus (used for player's own outdoor shot tail only!)
     this.outdoorBus = ctx.createGain();
     this.outdoorBus.gain.value = 1.0;
 
@@ -76,9 +79,9 @@ export class AudioSystem {
     if (panL) panL.pan.value = -0.55;
     if (panR) panR.pan.value = 0.55;
     const gL = ctx.createGain();
-    gL.gain.value = 0.11;
+    gL.gain.value = 0.09;
     const gR = ctx.createGain();
-    gR.gain.value = 0.08;
+    gR.gain.value = 0.07;
 
     this.outdoorBus.connect(this.sfxBus);
     this.outdoorBus.connect(slapLP);
@@ -105,9 +108,9 @@ export class AudioSystem {
     const indoorBoost = ctx.createBiquadFilter();
     indoorBoost.type = 'lowshelf';
     indoorBoost.frequency.value = 250;
-    indoorBoost.gain.value = 4.0;
+    indoorBoost.gain.value = 3.5;
     const wetGain = ctx.createGain();
-    wetGain.gain.value = 0.85;
+    wetGain.gain.value = 0.72;
 
     this.indoorBus.connect(indoorBoost);
     indoorBoost.connect(this.sfxBus);
@@ -120,7 +123,7 @@ export class AudioSystem {
     this.ambienceFilter.type = 'lowpass';
     this.ambienceFilter.frequency.value = 12000;
     this.ambienceGain = ctx.createGain();
-    this.ambienceGain.gain.value = 0.16;
+    this.ambienceGain.gain.value = 0.14;
     this.ambienceFilter.connect(this.ambienceGain);
     this.ambienceGain.connect(this.masterGain);
   }
@@ -205,10 +208,10 @@ export class AudioSystem {
     const nowIndoors = this.isPointIndoors(pos);
     if (nowIndoors !== this.isIndoors) {
       this.isIndoors = nowIndoors;
-      this.indoorBus.gain.setTargetAtTime(nowIndoors ? 1.05 : 0.0, t, 0.06);
+      this.indoorBus.gain.setTargetAtTime(nowIndoors ? 1.0 : 0.0, t, 0.06);
       this.outdoorBus.gain.setTargetAtTime(nowIndoors ? 0.0 : 1.0, t, 0.06);
-      this.ambienceFilter.frequency.setTargetAtTime(nowIndoors ? 420 : 12000, t, 0.08);
-      this.ambienceGain.gain.setTargetAtTime(nowIndoors ? 0.05 : 0.16, t, 0.08);
+      this.ambienceFilter.frequency.setTargetAtTime(nowIndoors ? 460 : 12000, t, 0.08);
+      this.ambienceGain.gain.setTargetAtTime(nowIndoors ? 0.045 : 0.14, t, 0.08);
     }
   }
 
@@ -218,24 +221,44 @@ export class AudioSystem {
     const dy = sourcePos.y - this.listenerPos.y;
     const dz = sourcePos.z - this.listenerPos.z;
     const dist = Math.hypot(dx, dy, dz);
-    if (dist < 1.2) return false;
-    const dir = { x: dx / dist, y: dy / dist, z: dz / dist };
-    const hit = this.physics.castRay(this.listenerPos, dir, dist - 0.35);
-    return !!(hit && hit.meta && hit.meta.kind !== 'enemy' && hit.meta.kind !== 'player');
+    if (dist < 1.5) return false;
+    this._scratchDir.x = dx / dist;
+    this._scratchDir.y = dy / dist;
+    this._scratchDir.z = dz / dist;
+    const hit = this.physics.castRay(this.listenerPos, this._scratchDir, dist - 0.35);
+    if (!hit || !hit.meta) return false;
+    const kind = hit.meta.kind;
+    return kind === 'wall' || kind === 'roof' || kind === 'door';
   }
 
   _createPanner(pos) {
     const p = this.ctx.createPanner();
-    // Tight HRTF spatialization for distinct left/right/front/back enemy direction & distance drop-off
+    // Crisp HRTF spatialization for accurate 3D direction & distance rolloff
     p.panningModel = 'HRTF';
     p.distanceModel = 'inverse';
-    p.refDistance = 2.2;
+    p.refDistance = 2.6;
     p.maxDistance = 85;
-    p.rolloffFactor = 1.18;
+    p.rolloffFactor = 1.15;
     p.positionX.setValueAtTime(pos.x, this.ctx.currentTime);
     p.positionY.setValueAtTime(pos.y, this.ctx.currentTime);
     p.positionZ.setValueAtTime(pos.z, this.ctx.currentTime);
     return p;
+  }
+
+  _track3DVoice(sourceNode) {
+    this._active3DVoices++;
+    let decremented = false;
+    const dec = () => {
+      if (!decremented) {
+        decremented = true;
+        this._active3DVoices = Math.max(0, this._active3DVoices - 1);
+      }
+    };
+    if (sourceNode && 'onended' in sourceNode) {
+      sourceNode.onended = dec;
+    } else {
+      setTimeout(dec, 400);
+    }
   }
 
   _routeNode(sourceNode, pos, gainVal = 1.0, useZoneBus = true, stereoPan = 0) {
@@ -244,31 +267,28 @@ export class AudioSystem {
     const g = ctx.createGain();
     const occluded = pos ? this._isOccluded(pos) : false;
     const diffFloor = pos && Math.abs(pos.y - this.listenerPos.y) > 2.3;
-    g.gain.value = occluded ? gainVal * (diffFloor ? 0.28 : 0.40) : gainVal;
+    g.gain.value = occluded ? gainVal * (diffFloor ? 0.38 : 0.55) : gainVal;
 
     let tail = sourceNode;
     if (occluded) {
       const lpf = ctx.createBiquadFilter();
       lpf.type = 'lowpass';
-      lpf.frequency.setValueAtTime(diffFloor ? 480 : 720, t);
+      lpf.frequency.setValueAtTime(diffFloor ? 780 : 1350, t);
       tail.connect(lpf);
       tail = lpf;
     }
 
     tail.connect(g);
     if (pos) {
-      // Enemy & world sounds use direct HRTF panner to sfxBus (or light zone feed) so echoes never confuse direction!
+      // 3D sources go purely through HRTF Panner -> sfxBus so L/R azimuth never smears!
       const panner = this._createPanner(pos);
       g.connect(panner);
-      if (useZoneBus) {
-        panner.connect(this.sfxBus);
-        const zoneSend = ctx.createGain();
-        zoneSend.gain.value = 0.22;
-        panner.connect(zoneSend);
-        zoneSend.connect(this.outdoorBus);
-        zoneSend.connect(this.indoorBus);
-      } else {
-        panner.connect(this.sfxBus);
+      panner.connect(this.sfxBus);
+      if (useZoneBus && this.isIndoors && this.isPointIndoors(pos)) {
+        const roomSend = ctx.createGain();
+        roomSend.gain.value = 0.14;
+        panner.connect(roomSend);
+        roomSend.connect(this.indoorBus);
       }
     } else {
       let outNode = g;
@@ -289,18 +309,21 @@ export class AudioSystem {
 
   playShot(weaponId, pos = null, isPlayer = true) {
     if (!this.ctx || !this.unlocked) return;
+    if (!isPlayer && pos && this._active3DVoices >= this._max3DVoices) return;
+
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const pitchVar = 0.95 + Math.random() * 0.10;
     const sourcePos = isPlayer ? null : pos;
 
-    // Layer 1: Crisp single-shot recorded body sample (trimmed to 0ms attack)
+    // Layer 1: Crisp single-shot recorded body sample
     const buf = this.buffers.get(`${weaponId}_fire`);
     if (buf) {
       const bodySrc = ctx.createBufferSource();
       bodySrc.buffer = buf;
       bodySrc.playbackRate.value = pitchVar;
-      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.92 : 0.78, true, isPlayer ? 0.04 : 0);
+      if (sourcePos) this._track3DVoice(bodySrc);
+      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.90 : 0.82, isPlayer, isPlayer ? 0.04 : 0);
       bodySrc.start(t);
     } else {
       const osc = ctx.createOscillator();
@@ -311,12 +334,13 @@ export class AudioSystem {
       env.gain.setValueAtTime(0.8, t);
       env.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
       osc.connect(env);
-      this._routeNode(env, sourcePos, 0.9, true);
+      if (sourcePos) this._track3DVoice(osc);
+      this._routeNode(env, sourcePos, 0.9, isPlayer);
       osc.start(t);
       osc.stop(t + 0.15);
     }
 
-    // Layer 2: Subtle mechanical bolt snap (player only — never delays or muddies enemy 3D cue)
+    // Layer 2: Subtle mechanical bolt snap (player only)
     if (isPlayer) {
       const mechNoise = ctx.createBufferSource();
       mechNoise.buffer = this._noiseBuffer(0.032);
@@ -325,7 +349,7 @@ export class AudioSystem {
       hp.frequency.value = weaponId === 'pistol' ? 3200 : 2400;
       hp.Q.value = 1.4;
       const mechEnv = ctx.createGain();
-      mechEnv.gain.setValueAtTime(0.24, t);
+      mechEnv.gain.setValueAtTime(0.22, t);
       mechEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.032);
       mechNoise.connect(hp);
       hp.connect(mechEnv);
@@ -344,11 +368,11 @@ export class AudioSystem {
   }
 
   playJump() {
-    this.playClip('jump', null, 0.42, 0.08);
+    this.playClip('jump', null, 0.36, 0.08);
   }
 
   playLand(fallSpeed = 4) {
-    const g = Math.min(0.75, Math.max(0.25, fallSpeed * 0.08));
+    const g = Math.min(0.65, Math.max(0.22, fallSpeed * 0.07));
     this.playClip('land', null, g, 0.08);
   }
 
@@ -357,24 +381,94 @@ export class AudioSystem {
   }
 
   playWeaponSwitch() {
-    this.playClip('weapon_switch', null, 0.55, 0.06);
+    this.playClip('weapon_switch', null, 0.52, 0.06);
   }
 
-  playPickup() {
+  playHitMarker(isHead = false, isKill = false) {
     if (!this.ctx || !this.unlocked) return;
     const ctx = this.ctx;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(520, t);
-    osc.frequency.exponentialRampToValueAtTime(880, t + 0.14);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(0.24, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    osc.type = isHead ? 'triangle' : 'sine';
+    osc.frequency.setValueAtTime(isHead ? 1850 : 920, t);
+    osc.frequency.exponentialRampToValueAtTime(isHead ? 2600 : 480, t + 0.055);
+    g.gain.setValueAtTime(isHead ? 0.24 : 0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
     osc.connect(g);
-    g.connect(this.masterGain);
+    g.connect(this.sfxBus);
     osc.start(t);
-    osc.stop(t + 0.24);
+    osc.stop(t + 0.07);
+
+    if (isKill) {
+      const kOsc = ctx.createOscillator();
+      const kG = ctx.createGain();
+      kOsc.type = 'sine';
+      kOsc.frequency.setValueAtTime(660, t + 0.03);
+      kOsc.frequency.exponentialRampToValueAtTime(1180, t + 0.14);
+      kG.gain.setValueAtTime(0.001, t);
+      kG.gain.setValueAtTime(0.20, t + 0.03);
+      kG.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      kOsc.connect(kG);
+      kG.connect(this.sfxBus);
+      kOsc.start(t + 0.03);
+      kOsc.stop(t + 0.17);
+    }
+  }
+
+  playPickup(kind = 'medkit') {
+    if (!this.ctx || !this.unlocked) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    if (kind === 'ammo') {
+      // Crisp metallic magazine clack
+      const noise = ctx.createBufferSource();
+      noise.buffer = this._noiseBuffer(0.06);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 1900;
+      bp.Q.value = 2.0;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.32, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
+      noise.connect(bp);
+      bp.connect(g);
+      g.connect(this.sfxBus);
+      noise.start(t);
+    } else {
+      // Clean two-note medkit chime + cloth zip feel
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(520, t);
+      osc.frequency.setValueAtTime(780, t + 0.06);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.18, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+      osc.connect(g);
+      g.connect(this.sfxBus);
+      osc.start(t);
+      osc.stop(t + 0.17);
+    }
+  }
+
+  playHeartbeatPulse() {
+    if (!this.ctx || !this.unlocked) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const start = t + i * 0.17;
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(64 - i * 8, start);
+      osc.frequency.exponentialRampToValueAtTime(34, start + 0.12);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.22 - i * 0.06, start);
+      g.gain.exponentialRampToValueAtTime(0.001, start + 0.13);
+      osc.connect(g);
+      g.connect(this.masterGain);
+      osc.start(start);
+      osc.stop(start + 0.14);
+    }
   }
 
   _triggerEarDuck() {
@@ -387,11 +481,21 @@ export class AudioSystem {
 
   playClip(key, pos = null, gain = 0.7, pitchJitter = 0.06) {
     if (!this.ctx || !this.unlocked) return;
+    if (pos) {
+      const dSq =
+        (pos.x - this.listenerPos.x) ** 2 +
+        (pos.y - this.listenerPos.y) ** 2 +
+        (pos.z - this.listenerPos.z) ** 2;
+      if (dSq > 58 * 58) return;
+      if (this._active3DVoices >= this._max3DVoices) return;
+    }
+
     const buf = this.buffers.get(key);
     if (buf) {
       const src = this.ctx.createBufferSource();
       src.buffer = buf;
       src.playbackRate.value = 1 - pitchJitter * 0.5 + Math.random() * pitchJitter;
+      if (pos) this._track3DVoice(src);
       this._routeNode(src, pos, gain, !pos);
       src.start();
       return;
@@ -410,6 +514,7 @@ export class AudioSystem {
     g.gain.setValueAtTime(gain * 0.35, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
     osc.connect(g);
+    if (pos) this._track3DVoice(osc);
     this._routeNode(g, pos, gain, !pos);
     osc.start(t);
     osc.stop(t + 0.11);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { createBakedLitBasicMaterial } from '../core/lightProbes.js';
 
 export const WEAPON_DEFS = {
   pistol: {
@@ -156,33 +157,48 @@ function createMuzzleFlashTexture() {
 }
 
 function liftWeaponMaterial(mat, isHolo = false) {
-  const m = mat.clone();
-  const mName = m.name?.toLowerCase() || '';
-  if (m.color) {
-    // Lift pitch-black flat shaders so weapon silhouette stays crisp, and darken pale-grey Holo hood to tactical charcoal
-    const lum = m.color.r * 0.3 + m.color.g * 0.59 + m.color.b * 0.11;
-    if (isHolo && !mName.includes('glass') && !mName.includes('red')) {
-      m.color.setHex(0x2e333b);
-    } else if (lum < 0.10) {
-      m.color.setHex(0x3b424c);
-    } else if (lum < 0.18) {
-      m.color.offsetHSL(0, 0, 0.06);
-    }
+  const mName = mat.name?.toLowerCase() || '';
+  if (isHolo && mName.includes('glass')) {
+    return new THREE.MeshBasicMaterial({
+      name: mat.name || '',
+      color: 0x8bc2d4,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+    });
   }
-  if (m.map && !mName.includes('glass') && !mName.includes('red')) {
-    // Lift dark textured weapons (AKM wood & receiver steel) subtly without crushing near-black texels
-    m.emissive = new THREE.Color(0x2a2f38);
-    m.emissiveIntensity = 1.0;
+
+  let col = mat.color ? mat.color.clone() : new THREE.Color(0xffffff);
+  const lum = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+  if (isHolo && !mName.includes('red')) {
+    col.setHex(0x30363f);
+  } else if (lum < 0.08) {
+    col.setHex(0x282d34);
+  } else if (lum < 0.16) {
+    col.offsetHSL(0, 0, 0.04);
   }
-  if (typeof m.roughness === 'number') m.roughness = THREE.MathUtils.clamp(m.roughness, 0.34, 0.58);
-  if (typeof m.metalness === 'number') m.metalness = THREE.MathUtils.clamp(m.metalness, 0.12, 0.38);
-  m.envMapIntensity = 1.45;
-  return m;
+
+  const out = createBakedLitBasicMaterial({
+    color: col,
+    map: mat.map || null,
+    baseFloor: mat.map ? 0.62 : 0.44,
+    hemiWeight: 0.28,
+    sunWeight: 0.44,
+    specBoost: mName.includes('wood') ? 0.05 : 0.18,
+  });
+  out.name = mat.name || '';
+  return out;
 }
 
 function createHoloOptic(holoScene, reticleTex) {
   const grp = new THREE.Group();
-  const riserMat = new THREE.MeshStandardMaterial({ color: 0x24282e, roughness: 0.48, metalness: 0.35, envMapIntensity: 1.3 });
+  const riserMat = createBakedLitBasicMaterial({
+    color: 0x242930,
+    baseFloor: 0.44,
+    hemiWeight: 0.28,
+    sunWeight: 0.44,
+    specBoost: 0.18,
+  });
   const riser = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.005, 0.044), riserMat);
   riser.position.set(0, -0.001, 0.002);
   grp.add(riser);
@@ -193,8 +209,6 @@ function createHoloOptic(holoScene, reticleTex) {
     hClone.position.set(0.0012, 0, 0); // Center asymmetric model bounds cleanly on X = 0
     hClone.traverse((c) => {
       if (c.isMesh) {
-        c.castShadow = false;
-        c.receiveShadow = false;
         c.frustumCulled = false;
         if (c.material) {
           c.material = liftWeaponMaterial(c.material, true);
@@ -202,11 +216,6 @@ function createHoloOptic(holoScene, reticleTex) {
           if (mName.includes('red')) {
             // Suppress baked inner-mesh reticle so only our crisp EOTech HUD reticle renders
             c.visible = false;
-          } else if (mName.includes('glass')) {
-            c.material.transparent = true;
-            c.material.opacity = 0.16;
-            c.material.color.setHex(0x8bc2d4);
-            c.material.depthWrite = false;
           }
         }
       }
@@ -241,10 +250,10 @@ function createHoloOptic(holoScene, reticleTex) {
 
 function createTacticalHands(id) {
   const grp = new THREE.Group();
-  const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x3b4432 });
-  const cuffMat = new THREE.MeshLambertMaterial({ color: 0x2c3228 });
-  const gloveMat = new THREE.MeshLambertMaterial({ color: 0x22262c });
-  const knuckleMat = new THREE.MeshLambertMaterial({ color: 0x383d46 });
+  const sleeveMat = createBakedLitBasicMaterial({ color: 0x454f3b, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.03 });
+  const cuffMat = createBakedLitBasicMaterial({ color: 0x353c30, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.03 });
+  const gloveMat = createBakedLitBasicMaterial({ color: 0x2b3038, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.05 });
+  const knuckleMat = createBakedLitBasicMaterial({ color: 0x444b56, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.08 });
 
   const addArticulatedArm = (palmPos, elbowPos, gripEuler, isLeft) => {
     const handGrp = new THREE.Group();
@@ -363,9 +372,42 @@ export class WeaponSystem {
     this._vEjectW = new THREE.Vector3();
     this._vRight = new THREE.Vector3();
     this._vUp = new THREE.Vector3();
+    this._vOrigin = new THREE.Vector3();
+    this._vDir = new THREE.Vector3();
+    this._vFinalHit = new THREE.Vector3();
+    this._vForward = new THREE.Vector3();
+    this._vPerpA = new THREE.Vector3();
+    this._vPerpB = new THREE.Vector3();
+    this._weaponBakedMats = {};
 
     this._buildDefaultViewmodels();
     this.equip(ORDER[this.currentIndex], true);
+  }
+
+  _collectWeaponBakedMats(id, root) {
+    const mats = [];
+    const seen = new Set();
+    root.traverse((c) => {
+      if (!c.isMesh || !c.material) return;
+      const list = Array.isArray(c.material) ? c.material : [c.material];
+      for (const m of list) {
+        if (m?.userData?.bakedUniforms && !seen.has(m)) {
+          seen.add(m);
+          mats.push(m);
+        }
+      }
+    });
+    this._weaponBakedMats[id] = mats;
+  }
+
+  updateLighting(probeTint, muzzleIntensity = 0) {
+    const mats = this._weaponBakedMats[this.activeDef.id];
+    if (!mats) return;
+    for (const m of mats) {
+      const u = m.userData.bakedUniforms;
+      if (probeTint && u.uProbeTint) u.uProbeTint.value.copy(probeTint);
+      if (u.uMuzzleFlash) u.uMuzzleFlash.value = muzzleIntensity;
+    }
   }
 
   setVisible(visible) {
@@ -380,13 +422,22 @@ export class WeaponSystem {
     return this.state[this.activeDef.id];
   }
 
-  resetAll() {
+  equipById(weaponId, silent = true) {
+    const idx = ORDER.indexOf(weaponId);
+    if (idx >= 0) {
+      this.currentIndex = idx;
+      this.equip(ORDER[idx], silent);
+    }
+  }
+
+  resetAll(preferredWeapon = 'm4') {
     this.state = {
       pistol: { mag: 15, reserve: 90 },
       akm: { mag: 30, reserve: 120 },
       m4: { mag: 30, reserve: 150 },
     };
-    this.currentIndex = 0;
+    const idx = ORDER.indexOf(preferredWeapon);
+    this.currentIndex = idx >= 0 ? idx : 0;
     this.isReloading = false;
     this.reloadTimer = 0;
     this.fireTimer = 0;
@@ -396,7 +447,9 @@ export class WeaponSystem {
     this.recoilYaw = 0;
     this.recoilVelP = 0;
     this.recoilVelY = 0;
-    this.equip(ORDER[0], true);
+    this.kickZ = 0;
+    this.kickRotX = 0;
+    this.equip(ORDER[this.currentIndex], true);
   }
 
   refillAmmo() {
@@ -415,9 +468,9 @@ export class WeaponSystem {
   }
 
   _buildDefaultViewmodels() {
-    const gunmetal = new THREE.MeshStandardMaterial({ color: 0x3a3f46, roughness: 0.44, metalness: 0.5 });
-    const woodStock = new THREE.MeshStandardMaterial({ color: 0x624127, roughness: 0.8 });
-    const polymer = new THREE.MeshStandardMaterial({ color: 0x26292d, roughness: 0.62, metalness: 0.2 });
+    const gunmetal = createBakedLitBasicMaterial({ color: 0x454b54, specBoost: 0.20 });
+    const woodStock = createBakedLitBasicMaterial({ color: 0x6f4b2f, specBoost: 0.05 });
+    const polymer = createBakedLitBasicMaterial({ color: 0x333840, specBoost: 0.14 });
 
     const flashMat = new THREE.SpriteMaterial({
       map: this._muzzleTex,
@@ -443,7 +496,10 @@ export class WeaponSystem {
     this.weaponMeshes.pistol = makeFallback(0.22, gunmetal);
     this.weaponMeshes.akm = makeFallback(0.55, woodStock);
     this.weaponMeshes.m4 = makeFallback(0.50, polymer);
-    Object.values(this.weaponMeshes).forEach((m) => this.fallbackRoot.add(m));
+    Object.entries(this.weaponMeshes).forEach(([id, m]) => {
+      this.fallbackRoot.add(m);
+      this._collectWeaponBakedMats(id, m);
+    });
   }
 
   attachWeaponModel(id, modelScene, extraScene = null) {
@@ -456,11 +512,11 @@ export class WeaponSystem {
     const cloned = cloneSkinned(modelScene);
     cloned.traverse((c) => {
       if (c.isMesh) {
-        c.castShadow = false;
-        c.receiveShadow = false;
         c.frustumCulled = false;
         if (c.material) {
-          c.material = liftWeaponMaterial(c.material);
+          c.material = Array.isArray(c.material)
+            ? c.material.map((m) => liftWeaponMaterial(m))
+            : liftWeaponMaterial(c.material);
         }
       }
     });
@@ -511,6 +567,7 @@ export class WeaponSystem {
     wrapper.visible = id === this.activeDef.id;
     this.weaponMeshes[id] = wrapper;
     this.viewmodelRoot.add(wrapper);
+    this._collectWeaponBakedMats(id, wrapper);
   }
 
   equip(id, silent = false) {
@@ -551,7 +608,7 @@ export class WeaponSystem {
   _syncViewmodelTransform(player) {
     const def = this.activeDef;
     this._vPos.lerpVectors(def.hipPos, def.adsPos, this.adsBlend);
-    const swayScale = 1 - this.adsBlend * 0.84;
+    const swayScale = 1 - this.adsBlend * 0.88;
     const sway = Math.sin(player.bobPhase) * (player.isSprinting ? 0.011 : 0.0032) * swayScale;
     const swayY = Math.abs(Math.cos(player.bobPhase)) * (player.isSprinting ? 0.009 : 0.0025) * swayScale;
     const drawDrop = (this.drawTimer / 0.24) * 0.16;
@@ -596,7 +653,7 @@ export class WeaponSystem {
       }
     }
 
-    if (this.fireTimer > 0) this.fireTimer -= dt;
+    if (this.fireTimer > 0) this.fireTimer = Math.max(-0.04, this.fireTimer - dt);
     if (this._emptyCooldown > 0) this._emptyCooldown -= dt;
 
     const targetAds = cmd.ads && !this.isReloading ? 1 : 0;
@@ -606,6 +663,12 @@ export class WeaponSystem {
 
     const wantsFire = cmd.fire && (!this._triggerHeld || def.auto);
     this._triggerHeld = cmd.fire;
+
+    // Allow interrupting reload if chamber/mag still has rounds left
+    if (wantsFire && this.isReloading && st.mag > 0) {
+      this.isReloading = false;
+      this.reloadTimer = 0;
+    }
 
     if (wantsFire && !this.isReloading && this.drawTimer < 0.08 && this.fireTimer <= 0) {
       if (st.mag > 0) {
@@ -619,8 +682,8 @@ export class WeaponSystem {
       this.shotIndex = Math.max(0, this.shotIndex - dt * 6);
     }
 
-    const stiffness = 72;
-    const damping = 15.0;
+    const stiffness = 78;
+    const damping = 16.0;
     this.recoilVelP += (-stiffness * this.recoilPitch - damping * this.recoilVelP) * dt;
     this.recoilVelY += (-stiffness * this.recoilYaw - damping * this.recoilVelY) * dt;
     this.recoilPitch += this.recoilVelP * dt;
@@ -630,14 +693,14 @@ export class WeaponSystem {
 
     if (this.shakeTime > 0) {
       this.shakeTime -= dt;
-      const amp = 0.0085 * (this.shakeTime / 0.08);
+      const amp = 0.0065 * (this.shakeTime / 0.075);
       player.shakeOffset.set((Math.random() - 0.5) * amp, (Math.random() - 0.5) * amp, 0);
     } else {
       player.shakeOffset.set(0, 0, 0);
     }
 
-    this.kickZ += (0 - this.kickZ) * Math.min(1, dt * 20);
-    this.kickRotX += (0 - this.kickRotX) * Math.min(1, dt * 18);
+    this.kickZ += (0 - this.kickZ) * Math.min(1, dt * 22);
+    this.kickRotX += (0 - this.kickRotX) * Math.min(1, dt * 22);
 
     const targetFov = THREE.MathUtils.lerp(72, def.adsFov, this.adsBlend);
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
@@ -648,7 +711,7 @@ export class WeaponSystem {
     this._syncViewmodelTransform(player);
 
     if (this.muzzleFlashSprite.material.opacity > 0) {
-      this.muzzleFlashSprite.material.opacity = Math.max(0, this.muzzleFlashSprite.material.opacity - dt * 30);
+      this.muzzleFlashSprite.material.opacity = Math.max(0, this.muzzleFlashSprite.material.opacity - dt * 32);
     }
   }
 
@@ -656,18 +719,41 @@ export class WeaponSystem {
     const def = this.activeDef;
     const st = this.activeAmmo;
     st.mag--;
-    this.fireTimer = 60 / def.rpm;
+    this.fireTimer = Math.max(0.02, this.fireTimer + 60 / def.rpm);
 
+    // 1. Sample pre-recoil camera origin & aim direction FIRST so bullet goes exactly where crosshair/Holo dot points!
+    player.applyCamera(1.0);
+    this.camera.updateMatrixWorld(true);
+    this._vOrigin.copy(this.camera.position);
+    this._vDir.copy(player.getAimDirection());
+
+    // Uniform circular disk spread perpendicular to aim ray (tighter during ADS & crouch)
+    const crouchSpread = player.isCrouching ? 0.65 : 1.0;
+    const spread =
+      (def.spreadBase * (1 - this.adsBlend * 0.85) + (player.isSprinting ? def.spreadMove : 0)) * crouchSpread;
+    if (spread > 1e-5) {
+      const ang = Math.random() * Math.PI * 2;
+      const rad = spread * Math.sqrt(Math.random());
+      const refUp = Math.abs(this._vDir.y) > 0.9 ? this._vRight.set(1, 0, 0) : this._vUp.set(0, 1, 0);
+      this._vPerpA.crossVectors(this._vDir, refUp).normalize();
+      this._vPerpB.crossVectors(this._vDir, this._vPerpA).normalize();
+      this._vDir
+        .addScaledVector(this._vPerpA, Math.cos(ang) * rad)
+        .addScaledVector(this._vPerpB, Math.sin(ang) * rad)
+        .normalize();
+    }
+
+    // 2. Apply recoil kick AFTER computing the shot ray (keeps ADS Holo dot locked smoothly on window)
     const pat = def.recoilPattern[Math.floor(this.shotIndex) % def.recoilPattern.length];
     this.shotIndex++;
-    const adsScale = 1 - this.adsBlend * 0.42;
+    const crouchRecoil = player.isCrouching ? 0.75 : 1.0;
+    const adsScale = (1 - this.adsBlend * 0.44) * crouchRecoil;
     this.recoilPitch += pat.p * adsScale;
     this.recoilYaw += pat.y * adsScale;
-    this.kickZ = 0.036 * (1 - this.adsBlend * 0.35);
-    this.kickRotX = 0.068 * (1 - this.adsBlend * 0.42);
-    this.shakeTime = 0.075;
+    this.kickZ = 0.028 * (1 - this.adsBlend * 0.48);
+    this.kickRotX = this.adsBlend > 0.5 ? 0.014 : 0.054;
+    this.shakeTime = 0.065;
 
-    // Force-sync camera & viewmodel world matrices BEFORE sampling barrel muzzle position!
     player.recoilPitch = this.recoilPitch;
     player.recoilYaw = this.recoilYaw;
     player.applyCamera(1.0);
@@ -675,9 +761,9 @@ export class WeaponSystem {
     this.camera.updateMatrixWorld(true);
 
     this.muzzleFlashSprite.position.copy(def.muzzleLocal);
-    const fs = (def.id === 'pistol' ? 0.13 : 0.17) * (0.85 + Math.random() * 0.3);
+    const fs = (def.id === 'pistol' ? 0.12 : 0.16) * (0.85 + Math.random() * 0.3);
     this.muzzleFlashSprite.scale.set(fs, fs, 1);
-    this.muzzleFlashSprite.material.opacity = 0.88;
+    this.muzzleFlashSprite.material.opacity = 0.85;
     this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
 
     this._vMuzzleW.copy(def.muzzleLocal).applyMatrix4(this.viewmodelRoot.matrixWorld);
@@ -689,36 +775,29 @@ export class WeaponSystem {
     this.effects.spawnCasing(this._vEjectW, this._vRight, this._vUp);
     this.audio.playShot(def.id, null, true);
 
-    const origin = this.camera.position.clone();
-    const dir = player.getAimDirection();
-    const spread = def.spreadBase * (1 - this.adsBlend * 0.82) + (player.isSprinting ? def.spreadMove : 0);
-    dir.x += (Math.random() - 0.5) * spread;
-    dir.y += (Math.random() - 0.5) * spread;
-    dir.z += (Math.random() - 0.5) * spread;
-    dir.normalize();
-
     let remainingDamage = def.damage;
-    let rayOrigin = { x: origin.x, y: origin.y, z: origin.z };
-    let finalHitPoint = origin.clone().addScaledVector(dir, 90);
+    const rayOrigin = { x: this._vOrigin.x, y: this._vOrigin.y, z: this._vOrigin.z };
+    const rayDir = { x: this._vDir.x, y: this._vDir.y, z: this._vDir.z };
+    this._vFinalHit.copy(this._vOrigin).addScaledVector(this._vDir, 90);
     let lastExclude = player.collider;
 
     for (let pass = 0; pass < 2; pass++) {
-      const hit = this.physics.castRay(rayOrigin, { x: dir.x, y: dir.y, z: dir.z }, 110, lastExclude);
+      const hit = this.physics.castRay(rayOrigin, rayDir, 110, lastExclude);
       if (!hit) break;
 
-      finalHitPoint.set(hit.point.x, hit.point.y, hit.point.z);
+      this._vFinalHit.set(hit.point.x, hit.point.y, hit.point.z);
       const mat = hit.meta?.material || 'concrete';
       this.effects.spawnImpact(hit.point, hit.normal, mat);
 
       if (hit.meta?.kind === 'enemy' && hit.meta?.ref) {
-        if (onHitEnemy) onHitEnemy(hit.meta.ref, remainingDamage, hit.point, dir);
-        if (onHitMarker) onHitMarker();
+        const res = onHitEnemy ? onHitEnemy(hit.meta.ref, remainingDamage, hit.point, this._vDir) : null;
+        if (onHitMarker) onHitMarker(!!res?.isHead, !!res?.killed);
         break;
       }
 
       if (hit.meta?.kind === 'prop' && hit.meta?.body) {
         hit.meta.body.applyImpulseAtPoint(
-          { x: dir.x * 18, y: dir.y * 18 + 2.5, z: dir.z * 18 },
+          { x: this._vDir.x * 18, y: this._vDir.y * 18 + 2.5, z: this._vDir.z * 18 },
           hit.point,
           true
         );
@@ -732,17 +811,15 @@ export class WeaponSystem {
 
       if ((mat === 'wood' || mat === 'plaster') && hit.meta?.penetrable) {
         remainingDamage *= def.penetration;
-        rayOrigin = {
-          x: hit.point.x + dir.x * 0.28,
-          y: hit.point.y + dir.y * 0.28,
-          z: hit.point.z + dir.z * 0.28,
-        };
+        rayOrigin.x = hit.point.x + this._vDir.x * 0.36;
+        rayOrigin.y = hit.point.y + this._vDir.y * 0.36;
+        rayOrigin.z = hit.point.z + this._vDir.z * 0.36;
         lastExclude = hit.collider;
       } else {
         break;
       }
     }
 
-    this.effects.spawnTracer(this._vMuzzleW, finalHitPoint);
+    this.effects.spawnTracer(this._vMuzzleW, this._vFinalHit);
   }
 }

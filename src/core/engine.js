@@ -15,11 +15,9 @@ export class GameEngine {
     this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.toneMappingExposure = 1.06;
+    this.renderer.shadowMap.enabled = false;
     this.renderer.shadowMap.autoUpdate = false;
-    this._shadowFrame = 0;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x8899a6);
@@ -28,29 +26,8 @@ export class GameEngine {
     this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.04, 185);
     this.scene.add(this.camera);
 
-    // Lightweight procedural overcast atmospheric sky gradient dome + PMREM IBL
+    // Lightweight procedural overcast atmospheric sky gradient dome (0 dynamic lights, 0 PMREM cost)
     this._initSkyDome();
-    this._initEnvironmentIBL();
-
-    // Balanced overcast European daylight + soft ground bounce so stairwells & ceilings stay readable without bleaching outdoors
-    this.hemiLight = new THREE.HemisphereLight(0xc2d5e8, 0x7c8678, 0.90);
-    this.scene.add(this.hemiLight);
-    this.ambientBounce = new THREE.AmbientLight(0x949ea8, 0.36);
-    this.scene.add(this.ambientBounce);
-
-    this.sunLight = new THREE.DirectionalLight(0xeef2f5, 1.05);
-    this.sunLight.position.set(22, 32, 14);
-    this.sunLight.castShadow = true;
-    this.sunLight.shadow.camera.near = 6;
-    this.sunLight.shadow.camera.far = 56;
-    const d = 16;
-    this.sunLight.shadow.camera.left = -d;
-    this.sunLight.shadow.camera.right = d;
-    this.sunLight.shadow.camera.top = d;
-    this.sunLight.shadow.camera.bottom = -d;
-    this.sunLight.shadow.bias = -0.0008;
-    this.scene.add(this.sunLight);
-    this.scene.add(this.sunLight.target);
 
     // Performance & pacing telemetry
     this.detectedHz = 60;
@@ -66,11 +43,38 @@ export class GameEngine {
     this._rafId = 0;
     this._running = false;
     this._overBudgetFrames = 0;
+    this._contextLost = false;
 
     this.applySettings(settings);
     this.resize();
     window.addEventListener('resize', () => this.resize());
+    canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this._contextLost = true;
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this._contextLost = false;
+      this._lastNow = performance.now();
+      this._lastRenderNow = this._lastNow;
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {
+        const now = performance.now();
+        this._lastNow = now;
+        this._lastRenderNow = now;
+        this._accumulator = 0;
+      }
+    });
     this.measureDisplayRefreshRate();
+  }
+
+  warmupShaders() {
+    if (this._contextLost) return;
+    try {
+      this.renderer.compile(this.scene, this.camera);
+    } catch {
+      // Ignore compile failure on constrained headless contexts
+    }
   }
 
   _initSkyDome() {
@@ -109,50 +113,6 @@ export class GameEngine {
     this.scene.add(this.skyDome);
   }
 
-  _initEnvironmentIBL() {
-    const w = 32;
-    const h = 16;
-    const data = new Uint8Array(w * h * 4);
-    for (let y = 0; y < h; y++) {
-      const v = y / (h - 1); // 0 = bottom ground, 1 = top zenith
-      let r, g, b;
-      if (v > 0.55) {
-        const t = (v - 0.55) / 0.45;
-        r = THREE.MathUtils.lerp(156, 118, t);
-        g = THREE.MathUtils.lerp(174, 146, t);
-        b = THREE.MathUtils.lerp(188, 174, t);
-      } else if (v > 0.44) {
-        r = 186; g = 196; b = 204;
-      } else {
-        const t = v / 0.44;
-        r = THREE.MathUtils.lerp(56, 98, t);
-        g = THREE.MathUtils.lerp(66, 112, t);
-        b = THREE.MathUtils.lerp(48, 86, t);
-      }
-      for (let x = 0; x < w; x++) {
-        const sunBump = (Math.abs(x - 20) < 4 && v > 0.52 && v < 0.72) ? 1.18 : 1.0;
-        const idx = (y * w + x) * 4;
-        data[idx] = Math.min(255, Math.round(r * sunBump));
-        data[idx + 1] = Math.min(255, Math.round(g * sunBump));
-        data[idx + 2] = Math.min(255, Math.round(b * sunBump));
-        data[idx + 3] = 255;
-      }
-    }
-    const tex = new THREE.DataTexture(data, w, h, THREE.RGBAFormat);
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.needsUpdate = true;
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    pmrem.compileEquirectangularShader();
-    const envRT = pmrem.fromEquirectangular(tex);
-    this.scene.environment = envRT.texture;
-    if ('environmentIntensity' in this.scene) {
-      this.scene.environmentIntensity = 0.55;
-    }
-    tex.dispose();
-    pmrem.dispose();
-  }
-
   measureDisplayRefreshRate() {
     const samples = [];
     let last = performance.now();
@@ -177,17 +137,9 @@ export class GameEngine {
   applySettings(settings) {
     this.settings = settings;
     const preset = QUALITY_PRESETS[settings.quality] || QUALITY_PRESETS.medium;
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.35) * (settings.resolutionScale || 0.75);
+    const resFactor = preset.resFactor || 1.0;
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.35) * (settings.resolutionScale || 0.8) * resFactor;
     this.renderer.setPixelRatio(Math.max(0.5, dpr));
-
-    if (this.sunLight.shadow.mapSize.width !== preset.shadowSize) {
-      this.sunLight.shadow.mapSize.set(preset.shadowSize, preset.shadowSize);
-      if (this.sunLight.shadow.map) {
-        this.sunLight.shadow.map.dispose();
-        this.sunLight.shadow.map = null;
-      }
-    }
-    this.renderer.shadowMap.needsUpdate = true;
     this.camera.far = preset.drawDist + 30;
     this.camera.updateProjectionMatrix();
     this.resize();
@@ -205,12 +157,6 @@ export class GameEngine {
     if (this.skyDome) {
       this.skyDome.position.set(playerPos.x, 0, playerPos.z);
     }
-    const snap = 2.0;
-    const sx = Math.round(playerPos.x / snap) * snap;
-    const sz = Math.round(playerPos.z / snap) * snap;
-    this.sunLight.target.position.set(sx, 0, sz);
-    this.sunLight.position.set(sx + 22, 32, sz + 14);
-    this.sunLight.target.updateMatrixWorld();
   }
 
   enforceTriangleBudget(lodObjects = []) {
@@ -252,6 +198,7 @@ export class GameEngine {
     const tick = (now) => {
       if (!this._running) return;
       this._rafId = requestAnimationFrame(tick);
+      if (this._contextLost) return;
 
       const rawDt = Math.min(0.08, (now - this._lastNow) / 1000);
       this._lastNow = now;
@@ -282,14 +229,7 @@ export class GameEngine {
       const renderDt = Math.min(0.08, elapsedSinceRender / 1000);
       onRenderFrame(alpha, renderDt);
 
-      // Update shadow map every N frames based on quality preset for smooth mobile FPS
-      const preset = QUALITY_PRESETS[this.settings.quality] || QUALITY_PRESETS.medium;
-      const shadowInt = preset.shadowInterval || 2;
-      if (this._shadowFrame++ % shadowInt === 0) {
-        this.renderer.shadowMap.needsUpdate = true;
-      }
-
-      // Direct backbuffer render with manual stats reset
+      // Direct backbuffer render with manual stats reset (zero shadow pass!)
       this.renderer.info.reset();
       this.renderer.render(this.scene, this.camera);
       this.triangles = this.renderer.info.render.triangles;

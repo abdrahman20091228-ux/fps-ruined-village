@@ -1,10 +1,30 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { createBakedLitBasicMaterial, LightProbeGrid, parseBakedVertexGI } from '../core/lightProbes.js';
 
-function makeBoxGeo(w, h, d, x, y, z, rx = 0, ry = 0, rz = 0, uvScale = 0.25) {
-  const g = new THREE.BoxGeometry(w, h, d);
+function makeBoxGeo(
+  w,
+  h,
+  d,
+  x,
+  y,
+  z,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+  uvScale = 0.25,
+  aoBottom = 1.0,
+  aoTop = 1.0,
+  subdivide = false
+) {
+  const sw = subdivide && w >= 2.1 ? Math.min(5, Math.max(1, Math.round(w / 1.75))) : 1;
+  const sh = subdivide && h >= 1.9 ? Math.min(3, Math.max(1, Math.round(h / 1.45))) : 1;
+  const sd = subdivide && d >= 2.1 ? Math.min(5, Math.max(1, Math.round(d / 1.75))) : 1;
+
+  const g = new THREE.BoxGeometry(w, h, d, sw, sh, sd);
   const uv = g.attributes.uv;
   const norm = g.attributes.normal;
+  const pos = g.attributes.position;
   for (let i = 0; i < uv.count; i++) {
     const nx = Math.abs(norm.getX(i));
     const ny = Math.abs(norm.getY(i));
@@ -19,11 +39,37 @@ function makeBoxGeo(w, h, d, x, y, z, rx = 0, ry = 0, rz = 0, uvScale = 0.25) {
     }
     uv.setXY(i, uv.getX(i) * sx * uvScale, uv.getY(i) * sy * uvScale);
   }
+  const cols = new Float32Array(pos.count * 3);
+  if (aoBottom !== 1.0 || aoTop !== 1.0) {
+    const halfH = Math.max(0.001, h * 0.5);
+    for (let i = 0; i < pos.count; i++) {
+      const t = THREE.MathUtils.clamp((pos.getY(i) + halfH) / (2 * halfH), 0, 1);
+      const v = aoBottom + (aoTop - aoBottom) * t;
+      cols[i * 3] = v;
+      cols[i * 3 + 1] = v;
+      cols[i * 3 + 2] = v;
+    }
+  } else {
+    cols.fill(1.0);
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(rx, ry, rz));
   m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(1, 1, 1));
   g.applyMatrix4(m);
   return g;
+}
+
+function assignGroundLightMapUv(geo) {
+  const pos = geo.attributes.position;
+  const uv1 = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    uv1[i * 2] = THREE.MathUtils.clamp((pos.getX(i) + 72.5) / 145.0, 0.002, 0.998);
+    uv1[i * 2 + 1] = THREE.MathUtils.clamp((pos.getZ(i) + 77.5) / 155.0, 0.002, 0.998);
+  }
+  geo.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
+  return geo;
 }
 
 function ensureFloatAttributes(geo) {
@@ -58,6 +104,37 @@ export class VillageBuilder {
     this.squadSpawns = []; // 12 distributed tactical spawns across houses, 5-story tower & alleys
     this.medkits = []; // Interactive walkable healing stations
     this.ammoBoxes = []; // Interactive walkable ammo resupply crates
+
+    this.probeGrid = new LightProbeGrid();
+    this.giMeshes = [];
+    this.bakeOccluders = [];
+    this.staticShadowBlobs = [];
+    this.shadowBlobTexture = null;
+    this.dynamicPropSyncs = [];
+  }
+
+  _recordOccluder(x, y, z, hx, hy, hz, rx = 0, ry = 0, rz = 0, kind = 'wall', bounceHex = 0x9aa09a) {
+    this.bakeOccluders.push({ x, y, z, hx, hy, hz, rx, ry, rz, kind, bounceHex });
+  }
+
+  _registerGIMesh(mesh) {
+    this.giMeshes.push(mesh);
+    return mesh;
+  }
+
+  _applyBakedVertexGI(slices) {
+    if (!slices || !slices.length) return false;
+    let applied = 0;
+    const count = Math.min(slices.length, this.giMeshes.length);
+    for (let i = 0; i < count; i++) {
+      const mesh = this.giMeshes[i];
+      const posAttr = mesh.geometry?.attributes?.position;
+      const slice = slices[i];
+      if (!posAttr || !slice || slice.length !== posAttr.count * 3) continue;
+      mesh.geometry.setAttribute('color', new THREE.BufferAttribute(slice, 3, true));
+      applied++;
+    }
+    return applied === this.giMeshes.length;
   }
 
   async build() {
@@ -70,6 +147,10 @@ export class VillageBuilder {
       texMetal,
       texRoof,
       texAsphalt,
+      texGroundLM,
+      texShadowBlob,
+      vertexGiBuf,
+      probesBuf,
     ] = await Promise.all([
       this.assets.loadTexture('concrete', 1, 1),
       this.assets.loadTexture('brick', 1, 1),
@@ -79,19 +160,60 @@ export class VillageBuilder {
       this.assets.loadTexture('metal', 1, 1),
       this.assets.loadTexture('roof_tiles', 1, 1),
       this.assets.loadTexture('asphalt', 1, 1),
+      this.assets
+        .loadTexture('lightmap_ground', 1, 1, {
+          clamp: true,
+          flipY: false,
+          channel: 1,
+          colorSpace: THREE.SRGBColorSpace,
+        })
+        .catch(() => null),
+      this.assets
+        .loadTexture('shadow_blob', 1, 1, {
+          clamp: true,
+          colorSpace: THREE.SRGBColorSpace,
+        })
+        .catch(() => null),
+      this.assets.getArrayBuffer('assets/baked/world_vertex_gi.bin').catch(() => null),
+      this.assets.getArrayBuffer('assets/baked/light_probes.bin').catch(() => null),
     ]);
 
+    this.shadowBlobTexture = texShadowBlob;
+    if (probesBuf) {
+      this.probeGrid.loadFromArrayBuffer(probesBuf);
+    }
+
+    const lmIntensity = texGroundLM ? Math.PI : 1.0;
+
+    // Baked vertex-lit basic materials (0 runtime lights!) for LOD2 & non-vertex-GI instanced props
     this.mats = {
-      concrete: new THREE.MeshLambertMaterial({ map: texConcrete, color: 0xdedfd8 }),
-      brick: new THREE.MeshLambertMaterial({ map: texBrick, color: 0xd8cfc8 }),
-      plaster: new THREE.MeshLambertMaterial({ map: texPlaster, color: 0xe6e6e0 }),
-      wood: new THREE.MeshLambertMaterial({ map: texWood, color: 0xc9b9a6 }),
-      dirt: new THREE.MeshLambertMaterial({ map: texDirt }),
-      metal: new THREE.MeshStandardMaterial({ map: texMetal, roughness: 0.55, metalness: 0.45 }),
-      roof: new THREE.MeshLambertMaterial({ map: texRoof }),
-      asphalt: new THREE.MeshLambertMaterial({ map: texAsphalt }),
-      trimDark: new THREE.MeshLambertMaterial({ color: 0x3b4042 }),
-      curbStone: new THREE.MeshLambertMaterial({ color: 0x676d6e }),
+      concrete: createBakedLitBasicMaterial({ map: texConcrete, color: 0xe6e8e1 }),
+      brick: createBakedLitBasicMaterial({ map: texBrick, color: 0xe2d9d1 }),
+      plaster: createBakedLitBasicMaterial({ map: texPlaster, color: 0xf1efe8 }),
+      wood: createBakedLitBasicMaterial({ map: texWood, color: 0xd0c1ae }),
+      dirt: new THREE.MeshBasicMaterial({
+        map: texDirt,
+        ...(texGroundLM ? { lightMap: texGroundLM, lightMapIntensity: lmIntensity } : {}),
+      }),
+      metal: createBakedLitBasicMaterial({ map: texMetal, color: 0xbac0c6 }),
+      roof: createBakedLitBasicMaterial({ map: texRoof }),
+      asphalt: new THREE.MeshBasicMaterial({
+        map: texAsphalt,
+        ...(texGroundLM ? { lightMap: texGroundLM, lightMapIntensity: lmIntensity } : {}),
+      }),
+      trimDark: createBakedLitBasicMaterial({ color: 0x3b4042 }),
+      curbStone: new THREE.MeshBasicMaterial({ color: 0x8d9496, vertexColors: true }),
+    };
+
+    // Pure MeshBasicMaterial with baked offline Vertex GI (direct sun + sky bounce + corner AO!)
+    this.archMats = {
+      concrete: new THREE.MeshBasicMaterial({ map: texConcrete, color: 0xebede6, vertexColors: true }),
+      brick: new THREE.MeshBasicMaterial({ map: texBrick, color: 0xe5dcd4, vertexColors: true }),
+      plaster: new THREE.MeshBasicMaterial({ map: texPlaster, color: 0xf4f2eb, vertexColors: true }),
+      wood: new THREE.MeshBasicMaterial({ map: texWood, color: 0xd4c5b2, vertexColors: true }),
+      roof: new THREE.MeshBasicMaterial({ map: texRoof, vertexColors: true }),
+      trimDark: new THREE.MeshBasicMaterial({ color: 0x4f5659, vertexColors: true }),
+      curbStone: this.mats.curbStone,
     };
 
     this._buildTerrainAndRoads();
@@ -101,7 +223,24 @@ export class VillageBuilder {
     await this._buildPropsAndWrecks();
     await this._buildFoliageAndUtilityLines();
     this._buildRubbleInstances();
+    this._buildStaticContactShadowBlobs();
     this._buildWaypointAndSpawnGraph();
+
+    if (this.probeGrid.data) {
+      const tint = new THREE.Vector3();
+      for (const d of this.doorSystem.doors) {
+        const u = d.mesh?.material?.userData?.bakedUniforms;
+        if (u?.uProbeTint) {
+          this.probeGrid.sample(d.hingePos.x, d.hingePos.y + 1.1, d.hingePos.z, tint, 0.52);
+          u.uProbeTint.value.copy(tint);
+        }
+      }
+    }
+
+    if (vertexGiBuf) {
+      const slices = parseBakedVertexGI(vertexGiBuf);
+      this._applyBakedVertexGI(slices);
+    }
   }
 
   _buildTerrainAndRoads() {
@@ -120,8 +259,8 @@ export class VillageBuilder {
       pos.setY(i, hill);
     }
     geo.computeVertexNormals();
+    assignGroundLightMapUv(geo);
     const terrain = new THREE.Mesh(geo, this.mats.dirt);
-    terrain.receiveShadow = true;
     this.scene.add(terrain);
 
     // Solid physics ground slab + perimeter containment bounds
@@ -139,49 +278,56 @@ export class VillageBuilder {
       this.physics.addStaticBox(b.pos, b.half, null, { material: 'dirt', kind: 'boundary' });
     }
 
-    // Wet European Cobblestone Avenue, Cross-Alley & North Town Plaza
+    // Wet European Cobblestone Avenue, Cross-Alley & North Town Plaza (subdivided for crisp lightmap UV1!)
     const roadGeos = [
-      makeBoxGeo(8.8, 0.05, 76, 0, 0.015, 0, 0, 0, 0, 0.24),      // North-South cobblestone street
-      makeBoxGeo(44, 0.04, 5.4, 0, 0.01, 7.6, 0, 0, 0, 0.24),     // East-West cross-alley
-      makeBoxGeo(18.0, 0.05, 9.6, 0, 0.016, -24.2, 0, 0, 0, 0.24),// Town Square cobblestone plaza
+      makeBoxGeo(8.8, 0.05, 76, 0, 0.015, 0, 0, 0, 0, 0.24, 1, 1, true),       // North-South cobblestone street
+      makeBoxGeo(44, 0.04, 5.4, 0, 0.01, 7.6, 0, 0, 0, 0.24, 1, 1, true),      // East-West cross-alley
+      makeBoxGeo(18.0, 0.05, 9.6, 0, 0.016, -24.2, 0, 0, 0, 0.24, 1, 1, true), // Town Square cobblestone plaza
     ];
-    const roadMesh = new THREE.Mesh(mergeGeometries(roadGeos, false), this.mats.asphalt);
-    roadMesh.receiveShadow = true;
+    const roadMerged = assignGroundLightMapUv(mergeGeometries(roadGeos, false));
+    const roadMesh = new THREE.Mesh(roadMerged, this.mats.asphalt);
     this.scene.add(roadMesh);
 
-    // Granite Stone Sidewalk Pavements & Curbs
+    // Granite Stone Sidewalk Pavements (with ground Lightmap UV1!)
     const walkGeos = [
-      makeBoxGeo(2.8, 0.11, 22, -5.8, 0.05, 22, 0, 0, 0, 0.25),
-      makeBoxGeo(2.8, 0.11, 22, 5.8, 0.05, 22, 0, 0, 0, 0.25),
-      makeBoxGeo(2.8, 0.11, 25, -5.8, 0.05, -8.5, 0, 0, 0, 0.25),
-      makeBoxGeo(2.8, 0.11, 25, 5.8, 0.05, -8.5, 0, 0, 0, 0.25),
+      makeBoxGeo(2.8, 0.11, 22, -5.8, 0.05, 22, 0, 0, 0, 0.25, 1, 1, true),
+      makeBoxGeo(2.8, 0.11, 22, 5.8, 0.05, 22, 0, 0, 0, 0.25, 1, 1, true),
+      makeBoxGeo(2.8, 0.11, 25, -5.8, 0.05, -8.5, 0, 0, 0, 0.25, 1, 1, true),
+      makeBoxGeo(2.8, 0.11, 25, 5.8, 0.05, -8.5, 0, 0, 0, 0.25, 1, 1, true),
     ];
-    const walkMesh = new THREE.Mesh(mergeGeometries(walkGeos, false), this.mats.concrete);
-    walkMesh.receiveShadow = true;
-    walkMesh.castShadow = false;
+    const walkMesh = new THREE.Mesh(assignGroundLightMapUv(mergeGeometries(walkGeos, false)), this.mats.concrete);
+    // WalkMesh receives baked ground lightmap too
+    walkMesh.material = new THREE.MeshBasicMaterial({
+      map: this.mats.concrete.map,
+      color: 0xe6e8e1,
+      ...(this.mats.asphalt.lightMap
+        ? { lightMap: this.mats.asphalt.lightMap, lightMapIntensity: this.mats.asphalt.lightMapIntensity }
+        : {}),
+    });
     this.scene.add(walkMesh);
 
-    // Granite curb borders & ruined octagonal plaza fountain monument (z = -21.8)
+    // Granite curb borders & ruined octagonal plaza fountain monument (z = -21.5) -> Vertex GI!
     const curbGeos = [
-      makeBoxGeo(0.24, 0.14, 22, -4.45, 0.07, 22),
-      makeBoxGeo(0.24, 0.14, 22, 4.45, 0.07, 22),
-      makeBoxGeo(0.24, 0.14, 25, -4.45, 0.07, -8.5),
-      makeBoxGeo(0.24, 0.14, 25, 4.45, 0.07, -8.5),
+      makeBoxGeo(0.24, 0.14, 22, -4.45, 0.07, 22, 0, 0, 0, 0.25, 0.85, 1.0, true),
+      makeBoxGeo(0.24, 0.14, 22, 4.45, 0.07, 22, 0, 0, 0, 0.25, 0.85, 1.0, true),
+      makeBoxGeo(0.24, 0.14, 25, -4.45, 0.07, -8.5, 0, 0, 0, 0.25, 0.85, 1.0, true),
+      makeBoxGeo(0.24, 0.14, 25, 4.45, 0.07, -8.5, 0, 0, 0, 0.25, 0.85, 1.0, true),
       // Ruined European Plaza Monument Fountain Base & Broken Column (x=0, z=-21.5)
-      makeBoxGeo(2.8, 0.48, 2.8, 0, 0.24, -21.5),
-      makeBoxGeo(1.1, 1.35, 1.1, 0, 1.15, -21.5),
-      makeBoxGeo(1.35, 0.18, 1.35, 0, 1.85, -21.5),
+      makeBoxGeo(2.8, 0.48, 2.8, 0, 0.24, -21.5, 0, 0, 0, 0.25, 0.82, 1.0, true),
+      makeBoxGeo(1.1, 1.35, 1.1, 0, 1.15, -21.5, 0, 0, 0, 0.25, 0.86, 1.0, false),
+      makeBoxGeo(1.35, 0.18, 1.35, 0, 1.85, -21.5, 0, 0, 0, 0.25, 0.90, 1.0, false),
     ];
-    const curbMesh = new THREE.Mesh(mergeGeometries(curbGeos, false), this.mats.curbStone);
-    curbMesh.castShadow = true;
-    curbMesh.receiveShadow = true;
-    this.scene.add(curbMesh);
+    const curbMesh = new THREE.Mesh(mergeGeometries(curbGeos, false), this.archMats.curbStone);
+    this.scene.add(this._registerGIMesh(curbMesh));
 
-    // Collide Plaza Fountain Monument cleanly
+    // Collide & occlude Plaza Fountain Monument cleanly
     this.physics.addStaticBox({ x: 0, y: 0.95, z: -21.5 }, { x: 1.4, y: 0.95, z: 1.4 }, null, {
       material: 'concrete',
       kind: 'wall',
     });
+    this._recordOccluder(0, 0.24, -21.5, 1.4, 0.24, 1.4, 0, 0, 0, 'wall', 0x7a8082);
+    this._recordOccluder(0, 1.15, -21.5, 0.55, 0.68, 0.55, 0, 0, 0, 'wall', 0x7a8082);
+    this._recordOccluder(0, 1.85, -21.5, 0.68, 0.09, 0.68, 0, 0, 0, 'wall', 0x7a8082);
   }
 
   _buildHouses() {
@@ -216,7 +362,7 @@ export class VillageBuilder {
       const stepY = (yBottom + stepH) * 0.5;
       const treadW = Math.abs(dx) > Math.abs(dz) ? horizLen / stepCount + 0.04 : width;
       const treadD = Math.abs(dz) >= Math.abs(dx) ? horizLen / stepCount + 0.04 : width;
-      buckets.concrete.push(makeBoxGeo(treadW, stepH - yBottom, treadD, sx, stepY, sz));
+      buckets.concrete.push(makeBoxGeo(treadW, stepH - yBottom, treadD, sx, stepY, sz, 0, 0, 0, 0.25, 0.84, 1.0));
     }
 
     // Smooth inclined Rapier ramp box collider matching stair slope direction!
@@ -254,8 +400,8 @@ export class VillageBuilder {
     const buckets = { concrete: [], brick: [], plaster: [], wood: [], roof: [], trimDark: [] };
     const lod1 = { wall: [], roof: [] };
 
-    const addBox = (wx, wy, wz, sx, sy, sz, matKey, pen = false, collide = true) => {
-      buckets[matKey].push(makeBoxGeo(sx, sy, sz, wx, wy, wz));
+    const addBox = (wx, wy, wz, sx, sy, sz, matKey, pen = false, collide = true, sub = true) => {
+      buckets[matKey].push(makeBoxGeo(sx, sy, sz, wx, wy, wz, 0, 0, 0, 0.25, 0.84, 1.0, sub));
       if (collide) {
         this.physics.addStaticBox(
           { x: cx + wx, y: wy, z: cz + wz },
@@ -263,15 +409,16 @@ export class VillageBuilder {
           null,
           { material: matKey === 'roof' || matKey === 'trimDark' ? 'concrete' : matKey, kind: 'wall', penetrable: pen }
         );
+        this._recordOccluder(cx + wx, wy, cz + wz, sx * 0.5, sy * 0.5, sz * 0.5, 0, 0, 0, 'wall');
       }
     };
 
     // Foundation plinth + Ground floor slab + Entry threshold step
     addBox(0, 0.1, 0, W + 0.55, 0.22, D + 0.55, 'concrete', false, true);
     const stepX = facing === 'E' ? W / 2 + 0.48 : -W / 2 - 0.48;
-    addBox(stepX, 0.08, 0, 0.9, 0.16, 1.9, 'concrete', false, true);
+    addBox(stepX, 0.08, 0, 0.9, 0.16, 1.9, 'concrete', false, true, false);
 
-    const doorHalf = 0.7; // 1.4m comfortable wide doorways!
+    const doorHalf = 0.72; // 1.44m comfortable wide doorways!
     const winHalf = 1.25;
 
     const buildFloorWalls = (floorIdx) => {
@@ -281,7 +428,8 @@ export class VillageBuilder {
 
       ['N', 'S', 'E', 'W'].forEach((side) => {
         const isDoor = floorIdx === 0 && side === facing;
-        const isBreach = (floorIdx === 0 && side === breachSide) || (floorIdx === 1 && side === facing);
+        const isBalconyDoor = floorIdx === 1 && side === facing;
+        const isBreach = floorIdx === 0 && side === breachSide;
         const isEW = side === 'E' || side === 'W';
 
         if (isEW) {
@@ -293,9 +441,11 @@ export class VillageBuilder {
             addBox(x, yMid, D / 2 - segLen / 2, t, H, segLen, wallMat);
             addBox(x, y0 + 2.68, 0, t, 0.84, doorHalf * 2, 'concrete');
             // Timber porch canopy & concrete doorframe trims
-            addBox(x, y0 + 1.15, -doorHalf - 0.06, t + 0.1, 2.3, 0.12, 'trimDark', false, false);
-            addBox(x, y0 + 1.15, doorHalf + 0.06, t + 0.1, 2.3, 0.12, 'trimDark', false, false);
-            addBox(x + outSign * 0.45, y0 + 2.48, 0, 0.9, 0.10, 2.1, 'wood', false, false);
+            addBox(x, y0 + 1.15, -doorHalf - 0.06, t + 0.1, 2.3, 0.12, 'trimDark', false, false, false);
+            addBox(x, y0 + 1.15, doorHalf + 0.06, t + 0.1, 2.3, 0.12, 'trimDark', false, false, false);
+            addBox(x + outSign * 0.45, y0 + 2.48, 0, 0.9, 0.10, 2.1, 'wood', false, false, false);
+            this._recordOccluder(cx + x + outSign * 0.45, y0 + 2.48, cz, 0.45, 0.05, 1.05, 0, 0, 0, 'wall');
+            const doorMat = createBakedLitBasicMaterial({ map: this.mats.wood.map, color: 0xd0c1ae });
             this.doorSystem.createDoor({
               hingePos: { x: cx + x, y: y0, z: cz - doorHalf + 0.06 },
               width: doorHalf * 2 - 0.12,
@@ -303,58 +453,65 @@ export class VillageBuilder {
               thickness: 0.08,
               baseYaw: -Math.PI / 2,
               openDir: side === 'E' ? -1 : 1,
-              material: this.mats.wood,
+              material: doorMat,
             });
-          } else if (isBreach && floorIdx === 0) {
+          } else if (isBalconyDoor) {
+            const segLen = (D - doorHalf * 2) / 2;
+            addBox(x, yMid, -D / 2 + segLen / 2, t, H, segLen, wallMat);
+            addBox(x, yMid, D / 2 - segLen / 2, t, H, segLen, wallMat);
+            addBox(x, y0 + 2.68, 0, t, 0.84, doorHalf * 2, wallMat);
+            addBox(x, y0 + 1.15, -doorHalf - 0.06, t + 0.08, 2.3, 0.12, 'trimDark', false, false, false);
+            addBox(x, y0 + 1.15, doorHalf + 0.06, t + 0.08, 2.3, 0.12, 'trimDark', false, false, false);
+          } else if (isBreach) {
             addBox(x, yMid, -D / 2 + 1.15, t, H, 2.3, wallMat);
             addBox(x, yMid, D / 2 - 1.15, t, H, 2.3, wallMat);
-            addBox(x, y0 + 0.09, 0, t + 0.12, 0.18, D - 4.6, 'brick');
-            addBox(x, y0 + 2.86, -0.9, 0.06, 0.45, 0.06, 'trimDark', false, false);
-            addBox(x, y0 + 2.88, 0.85, 0.06, 0.4, 0.06, 'trimDark', false, false);
+            addBox(x, y0 + 0.02, 0, t + 0.12, 0.04, D - 4.6, 'brick', false, true, false);
+            addBox(x, y0 + 2.86, -0.9, 0.06, 0.45, 0.06, 'trimDark', false, false, false);
+            addBox(x, y0 + 2.88, 0.85, 0.06, 0.4, 0.06, 'trimDark', false, false, false);
           } else {
             const pier = (D - winHalf * 2) / 2;
             addBox(x, yMid, -D / 2 + pier / 2, t, H, pier, wallMat);
             addBox(x, yMid, D / 2 - pier / 2, t, H, pier, wallMat);
             addBox(x, y0 + 0.5, 0, t, 1.0, winHalf * 2, wallMat);
             addBox(x, y0 + 2.65, 0, t, 0.9, winHalf * 2, wallMat);
-            addBox(x, y0 + 1.02, 0, t + 0.14, 0.1, winHalf * 2 + 0.2, 'concrete', false, false);
-            addBox(x, y0 + 2.22, 0, t + 0.14, 0.12, winHalf * 2 + 0.2, 'trimDark', false, false);
+            addBox(x, y0 + 1.02, 0, t + 0.14, 0.1, winHalf * 2 + 0.2, 'concrete', false, false, false);
+            addBox(x, y0 + 2.22, 0, t + 0.14, 0.12, winHalf * 2 + 0.2, 'trimDark', false, false, false);
             // Exterior wooden shutters & vertical window mullion
-            addBox(x + outSign * (t * 0.5 + 0.04), y0 + 1.62, -winHalf - 0.24, 0.06, 1.1, 0.42, 'wood', false, false);
-            addBox(x + outSign * (t * 0.5 + 0.04), y0 + 1.62, winHalf + 0.24, 0.06, 1.1, 0.42, 'wood', false, false);
-            addBox(x, y0 + 1.62, 0, 0.07, 1.12, 0.07, 'trimDark', false, false);
+            addBox(x + outSign * (t * 0.5 + 0.04), y0 + 1.62, -winHalf - 0.24, 0.06, 1.1, 0.42, 'wood', false, false, false);
+            addBox(x + outSign * (t * 0.5 + 0.04), y0 + 1.62, winHalf + 0.24, 0.06, 1.1, 0.42, 'wood', false, false, false);
+            addBox(x, y0 + 1.62, 0, 0.07, 1.12, 0.07, 'trimDark', false, false, false);
           }
-          lod1.wall.push(makeBoxGeo(t, H, D, x, yMid, 0));
+          lod1.wall.push(makeBoxGeo(t, H, D, x, yMid, 0, 0, 0, 0, 0.25, 0.85, 1.0, true));
         } else {
           const z = side === 'S' ? D / 2 : -D / 2;
           const outSign = side === 'S' ? 1 : -1;
-          if (isBreach && floorIdx === 0) {
+          if (isBreach) {
             addBox(-W / 2 + 1.4, yMid, z, 2.8, H, t, wallMat);
             addBox(W / 2 - 1.4, yMid, z, 2.8, H, t, wallMat);
-            addBox(0, y0 + 0.09, z, W - 5.6, 0.18, t + 0.12, 'brick');
+            addBox(0, y0 + 0.02, z, W - 5.6, 0.04, t + 0.12, 'brick', false, true, false);
           } else {
             const pier = (W - winHalf * 2) / 2;
             addBox(-W / 2 + pier / 2, yMid, z, pier, H, t, wallMat);
             addBox(W / 2 - pier / 2, yMid, z, pier, H, t, wallMat);
             addBox(0, y0 + 0.5, z, winHalf * 2, 1.0, t, wallMat);
             addBox(0, y0 + 2.65, z, winHalf * 2, 0.9, t, wallMat);
-            addBox(0, y0 + 1.02, z, winHalf * 2 + 0.2, 0.1, t + 0.14, 'concrete', false, false);
-            addBox(0, y0 + 2.22, z, winHalf * 2 + 0.2, 0.12, t + 0.14, 'trimDark', false, false);
-            addBox(-winHalf - 0.24, y0 + 1.62, z + outSign * (t * 0.5 + 0.04), 0.42, 1.1, 0.06, 'wood', false, false);
-            addBox(winHalf + 0.24, y0 + 1.62, z + outSign * (t * 0.5 + 0.04), 0.42, 1.1, 0.06, 'wood', false, false);
-            addBox(0, y0 + 1.62, z, 0.07, 1.12, 0.07, 'trimDark', false, false);
+            addBox(0, y0 + 1.02, z, winHalf * 2 + 0.2, 0.1, t + 0.14, 'concrete', false, false, false);
+            addBox(0, y0 + 2.22, z, winHalf * 2 + 0.2, 0.12, t + 0.14, 'trimDark', false, false, false);
+            addBox(-winHalf - 0.24, y0 + 1.62, z + outSign * (t * 0.5 + 0.04), 0.42, 1.1, 0.06, 'wood', false, false, false);
+            addBox(winHalf + 0.24, y0 + 1.62, z + outSign * (t * 0.5 + 0.04), 0.42, 1.1, 0.06, 'wood', false, false, false);
+            addBox(0, y0 + 1.62, z, 0.07, 1.12, 0.07, 'trimDark', false, false, false);
           }
-          lod1.wall.push(makeBoxGeo(W, H, t, 0, yMid, z));
+          lod1.wall.push(makeBoxGeo(W, H, t, 0, yMid, z, 0, 0, 0, 0.25, 0.85, 1.0, true));
         }
       });
 
       // Structural corner concrete pilasters & belt cornice beam
       for (const sx of [-W / 2, W / 2]) {
         for (const sz of [-D / 2, D / 2]) {
-          addBox(sx, yMid, sz, 0.44, H - 0.18, 0.44, 'concrete', false, false);
+          addBox(sx, yMid, sz, 0.44, H - 0.18, 0.44, 'concrete', false, false, false);
         }
       }
-      addBox(0, y0 + H, 0, W + 0.48, 0.16, D + 0.48, 'concrete', false, false);
+      addBox(0, y0 + H, 0, W + 0.48, 0.16, D + 0.48, 'concrete', false, false, false);
     };
 
     for (let f = 0; f < stories; f++) {
@@ -363,25 +520,25 @@ export class VillageBuilder {
 
     // Interior ground partition (penetrable plaster CQB cover leaving clear corridor from breach to staircase)
     addBox(-0.6, 0.2 + H / 2, -1.6, 0.16, H, 2.6, 'plaster', true);
-    addBox(-0.6, 0.26, -1.6, 0.20, 0.12, 2.6, 'trimDark', false, false);
+    addBox(-0.6, 0.26, -1.6, 0.20, 0.12, 2.6, 'trimDark', false, false, false);
 
     if (stories === 2) {
-      // Floor 2 slab with clean stairwell cutout along rear wall
-      const stairX = facing === 'E' ? -3.35 : 3.35;
-      const railOffset = facing === 'E' ? 0.85 : -0.85;
-      const deckW = W - 2.6;
-      const deckCx = facing === 'E' ? 1.2 : -1.2;
+      // Floor 2 slab seamlessly joined to North stair landing for any house width W
+      const stairX = facing === 'E' ? (-W / 2 + 1.25) : (W / 2 - 1.25);
+      const railOffset = facing === 'E' ? 1.18 : -1.18;
+      const deckW = W - 2.45;
+      const deckCx = facing === 'E' ? (W / 2 - deckW / 2) : (-W / 2 + deckW / 2);
       addBox(deckCx, 0.2 + H, 0, deckW, 0.22, D, 'concrete', false, true);
       // North landing slab bridging stairs (z: -D/2..-1.2) smoothly to upper floor deck
-      addBox(stairX, 0.2 + H, -D / 2 + 1.4, 2.3, 0.22, 2.8, 'concrete', false, true);
+      addBox(stairX, 0.2 + H, -D / 2 + 1.4, 2.55, 0.22, 2.8, 'concrete', false, true);
       // Balcony projection overlooking street on Floor 2
       const balcX = facing === 'E' ? W / 2 + 0.7 : -W / 2 - 0.7;
       addBox(balcX, 0.2 + H, 0, 1.35, 0.18, 4.4, 'concrete', false, true);
       addBox(balcX + (facing === 'E' ? 0.62 : -0.62), 0.2 + H + 0.5, 0, 0.12, 0.95, 4.4, 'brick', false, true);
 
-      // Stairwell safety balustrade along inner Floor 2 stairwell opening (leaves North landing z < -1.1 wide open!)
+      // Stairwell safety balustrade flush along inner Floor 2 stairwell opening
       addBox(stairX + railOffset, 0.2 + H + 0.5, 1.35, 0.10, 0.90, 4.9, 'wood', false, true);
-      buckets.wood.push(makeBoxGeo(0.08, 0.08, 5.1, stairX + railOffset, 0.2 + H * 0.5 + 0.9, 0.8, 0.67, 0, 0));
+      buckets.wood.push(makeBoxGeo(0.08, 0.08, 5.1, stairX + railOffset, 0.2 + H * 0.5 + 0.9, 0.8, 0.67, 0, 0, 0.25, 0.84, 1.0));
 
       // Internal stair flight from Ground (0.2) -> North Floor 2 Landing top surface (0.2+H+0.10 = 3.40)
       this._addStaircase(buckets, cx, cz, stairX, stairX, D / 2 - 1.2, -1.2, 0.2, 0.2 + H + 0.10, 10);
@@ -391,45 +548,50 @@ export class VillageBuilder {
     const roofY = 0.2 + stories * H;
     const slopeAng = 0.44;
     const slopeW = W * 0.56;
-    buckets.roof.push(makeBoxGeo(slopeW, 0.16, D + 0.65, -W * 0.25, roofY + 0.78, 0, 0, 0, slopeAng));
-    buckets.roof.push(makeBoxGeo(slopeW * 0.86, 0.16, D * 0.68, W * 0.24, roofY + 0.84, -D * 0.14, 0, 0, -slopeAng));
+    buckets.roof.push(makeBoxGeo(slopeW, 0.16, D + 0.65, -W * 0.25, roofY + 0.78, 0, 0, 0, slopeAng, 0.25, 0.84, 1.0, true));
+    buckets.roof.push(makeBoxGeo(slopeW * 0.86, 0.16, D * 0.68, W * 0.24, roofY + 0.84, -D * 0.14, 0, 0, -slopeAng, 0.25, 0.84, 1.0, true));
     // Timber ridge beam & attic cross rafters
-    buckets.wood.push(makeBoxGeo(0.20, 0.22, D + 0.45, 0, roofY + 1.48, 0));
+    buckets.wood.push(makeBoxGeo(0.20, 0.22, D + 0.45, 0, roofY + 1.48, 0, 0, 0, 0, 0.25, 0.84, 1.0));
     for (let z = -2.4; z <= 2.4; z += 1.6) {
-      buckets.wood.push(makeBoxGeo(W * 0.94, 0.12, 0.14, 0, roofY + 0.04, z));
+      buckets.wood.push(makeBoxGeo(W * 0.94, 0.12, 0.14, 0, roofY + 0.04, z, 0, 0, 0, 0.25, 0.84, 1.0));
     }
-    lod1.roof.push(makeBoxGeo(slopeW, 0.24, D + 0.45, -W * 0.24, roofY + 0.78, 0, 0, 0, slopeAng));
-    lod1.roof.push(makeBoxGeo(slopeW, 0.24, D + 0.45, W * 0.24, roofY + 0.78, 0, 0, 0, -slopeAng));
+    lod1.roof.push(makeBoxGeo(slopeW, 0.24, D + 0.45, -W * 0.24, roofY + 0.78, 0, 0, 0, slopeAng, 0.25, 0.85, 1.0, true));
+    lod1.roof.push(makeBoxGeo(slopeW, 0.24, D + 0.45, W * 0.24, roofY + 0.78, 0, 0, 0, -slopeAng, 0.25, 0.85, 1.0, true));
 
     // Brick chimney stack rising from gable roof (collided)
-    addBox(-W * 0.24, roofY + 1.05, -D * 0.24, 0.82, 1.55, 0.82, 'brick', false, true);
-    buckets.trimDark.push(makeBoxGeo(0.96, 0.14, 0.96, -W * 0.24, roofY + 1.85, -D * 0.24));
+    addBox(-W * 0.24, roofY + 1.05, -D * 0.24, 0.82, 1.55, 0.82, 'brick', false, true, false);
+    buckets.trimDark.push(makeBoxGeo(0.96, 0.14, 0.96, -W * 0.24, roofY + 1.85, -D * 0.24, 0, 0, 0, 0.25, 0.84, 1.0));
 
-    // Indoor sound roof collider
-    this.physics.addStaticBox({ x: cx, y: roofY + 0.2, z: cz }, { x: W / 2, y: 0.16, z: D / 2 }, null, {
-      material: 'wood',
-      kind: 'roof',
-      penetrable: true,
-    });
+    // Sloped roof colliders matching pitched geometry so attic headroom isn't flattened
+    this.physics.addStaticBox(
+      { x: cx - W * 0.25, y: roofY + 0.78, z: cz },
+      { x: slopeW * 0.5, y: 0.09, z: (D + 0.65) * 0.5 },
+      { x: 0, y: 0, z: slopeAng },
+      { material: 'wood', kind: 'roof', penetrable: true }
+    );
+    this._recordOccluder(cx - W * 0.25, roofY + 0.78, cz, slopeW * 0.5, 0.09, (D + 0.65) * 0.5, 0, 0, slopeAng, 'roof');
+    this.physics.addStaticBox(
+      { x: cx + W * 0.24, y: roofY + 0.84, z: cz - D * 0.14 },
+      { x: slopeW * 0.43, y: 0.09, z: D * 0.34 },
+      { x: 0, y: 0, z: -slopeAng },
+      { material: 'wood', kind: 'roof', penetrable: true }
+    );
+    this._recordOccluder(cx + W * 0.24, roofY + 0.84, cz - D * 0.14, slopeW * 0.43, 0.09, D * 0.34, 0, 0, -slopeAng, 'roof');
 
-    // Assemble 3-Level THREE.LOD
+    // Assemble 3-Level THREE.LOD with baked Vertex GI meshes
     const lod = new THREE.LOD();
     lod.position.set(cx, 0, cz);
     const g0 = new THREE.Group();
     for (const [k, list] of Object.entries(buckets)) {
       if (!list.length) continue;
-      const mesh = new THREE.Mesh(mergeGeometries(list, false), this.mats[k]);
-      mesh.castShadow = k === 'concrete' || k === 'brick' || k === 'roof';
-      mesh.receiveShadow = true;
-      g0.add(mesh);
+      const mesh = new THREE.Mesh(mergeGeometries(list, false), this.archMats[k]);
+      g0.add(this._registerGIMesh(mesh));
     }
 
     const g1 = new THREE.Group();
-    const l1W = new THREE.Mesh(mergeGeometries(lod1.wall, false), this.mats[style]);
-    const l1R = new THREE.Mesh(mergeGeometries(lod1.roof, false), this.mats.roof);
-    l1W.castShadow = false;
-    l1W.receiveShadow = true;
-    g1.add(l1W, l1R);
+    const l1W = new THREE.Mesh(mergeGeometries(lod1.wall, false), this.archMats[style]);
+    const l1R = new THREE.Mesh(mergeGeometries(lod1.roof, false), this.archMats.roof);
+    g1.add(this._registerGIMesh(l1W), this._registerGIMesh(l1R));
 
     const g2 = new THREE.Mesh(new THREE.BoxGeometry(W, roofY, D), this.mats[style]);
     g2.position.y = roofY * 0.5;
@@ -463,8 +625,8 @@ export class VillageBuilder {
     const buckets = { concrete: [], brick: [], plaster: [], wood: [], trimDark: [] };
     const lod1 = [];
 
-    const addBox = (wx, wy, wz, sx, sy, sz, matKey, pen = false, collide = true) => {
-      buckets[matKey].push(makeBoxGeo(sx, sy, sz, wx, wy, wz));
+    const addBox = (wx, wy, wz, sx, sy, sz, matKey, pen = false, collide = true, sub = true) => {
+      buckets[matKey].push(makeBoxGeo(sx, sy, sz, wx, wy, wz, 0, 0, 0, 0.25, 0.84, 1.0, sub));
       if (collide) {
         this.physics.addStaticBox(
           { x: cx + wx, y: wy, z: cz + wz },
@@ -472,6 +634,7 @@ export class VillageBuilder {
           null,
           { material: matKey === 'trimDark' ? 'concrete' : matKey, kind: 'wall', penetrable: pen }
         );
+        this._recordOccluder(cx + wx, wy, cz + wz, sx * 0.5, sy * 0.5, sz * 0.5, 0, 0, 0, 'wall');
       }
     };
 
@@ -488,7 +651,7 @@ export class VillageBuilder {
       // Exterior structural columns
       for (const px of [-W / 2, -2.0, 2.2, W / 2]) {
         for (const pz of [-D / 2, D / 2]) {
-          addBox(px, yMid, pz, 0.44, H, 0.44, 'concrete', false, false);
+          addBox(px, yMid, pz, 0.44, H, 0.44, 'concrete', false, false, false);
         }
       }
 
@@ -499,7 +662,7 @@ export class VillageBuilder {
         addBox(3.2, yMid, D / 2, 7.6, H, t, 'concrete');
         addBox(-1.9, y0 + 2.7, D / 2, 2.6, 0.8, t, 'concrete');
         // Decorative lobby header trim
-        addBox(-1.9, y0 + 2.4, D / 2 + 0.14, 3.0, 0.22, 0.16, 'trimDark', false, false);
+        addBox(-1.9, y0 + 2.4, D / 2 + 0.14, 3.0, 0.22, 0.16, 'trimDark', false, false, false);
       } else {
         // Upper floors 2..5: Wide bombed balcony openings & tactical windows facing south street!
         addBox(-5.6, yMid, D / 2, 2.8, H, t, 'plaster');
@@ -512,8 +675,8 @@ export class VillageBuilder {
         // Projecting South Balcony on every upper floor!
         addBox(-1.4, y0, D / 2 + 0.72, 6.2, 0.18, 1.44, 'concrete', false, true);
         addBox(-1.4, y0 + 0.48, D / 2 + 1.38, 6.2, 0.92, 0.14, 'concrete', false, true);
-        addBox(-4.44, y0 + 0.48, D / 2 + 0.72, 0.14, 0.92, 1.32, 'concrete', false, true);
-        addBox(1.64, y0 + 0.48, D / 2 + 0.72, 0.14, 0.92, 1.32, 'concrete', false, true);
+        addBox(-4.44, y0 + 0.48, D / 2 + 0.72, 0.14, 0.92, 1.32, 'concrete', false, true, false);
+        addBox(1.64, y0 + 0.48, D / 2 + 0.72, 0.14, 0.92, 1.32, 'concrete', false, true, false);
       }
 
       // North Facade (z = -D/2) with rear firing windows
@@ -529,7 +692,7 @@ export class VillageBuilder {
       if (f === 0) {
         addBox(-W / 2, yMid, -2.9, t, H, 3.8, 'concrete');
         addBox(-W / 2, yMid, 2.9, t, H, 3.8, 'concrete');
-        addBox(-W / 2, y0 + 0.08, 0, t + 0.1, 0.16, 2.0, 'brick');
+        addBox(-W / 2, y0 + 0.02, 0, t + 0.1, 0.04, 2.0, 'brick', false, true, false);
       } else {
         addBox(-W / 2, yMid, -2.9, t, H, 3.8, 'plaster');
         addBox(-W / 2, yMid, 2.9, t, H, 3.8, 'plaster');
@@ -544,7 +707,6 @@ export class VillageBuilder {
       addBox(W / 2, y0 + 2.75, 0, t, 0.7, 2.6, 'concrete');
 
       // Interior Dividing Wall between Main Combat Room (x < +2.2) & Stairwell Core (x > +2.2):
-      // Open archway at South end (z: +2.0 .. +4.6) so player & enemies walk right into stairwell!
       addBox(2.2, yMid, -1.4, 0.24, H, 6.8, 'plaster', true);
       addBox(2.2, y0 + 2.72, 3.3, 0.24, 0.76, 2.6, 'concrete');
 
@@ -553,49 +715,40 @@ export class VillageBuilder {
       addBox(-2.4, y0 + H * 0.5, partZ, 3.4, H, 0.16, 'plaster', true);
 
       // FLOOR SLAB FOR NEXT LEVEL (y = yNext):
-      // Main Combat Room floor slab (x: -7.0 .. +2.2, z: -4.8 .. +4.8) — solid deck
       addBox(-2.4, yNext - 0.1, 0, 9.2, 0.2, D, 'concrete', false, true);
-      // South Stairwell Landing floor slab connecting Flight B arrival to Main Room of floor (f+1)
       addBox(4.6, yNext - 0.1, 3.4, 4.8, 0.2, 2.8, 'concrete', false, true);
 
-      // SWITCHBACK STAIRCASE INSIDE STAIRWELL BAY (x: +2.2 .. +7.0) climbing y0 -> ym -> yNext:
-      // Mid-Landing on North side (x: +2.2 .. +6.9, z: -4.7 .. -2.3)
+      // SWITCHBACK STAIRCASE INSIDE STAIRWELL BAY
       addBox(4.55, ym - 0.08, -3.5, 4.7, 0.16, 2.4, 'concrete', false, true);
-      // Flight A (South -> North along inner lane x=+3.4, z: +2.1 -> -2.3)
       this._addStaircase(buckets, cx, cz, 3.35, 3.35, 2.1, -2.3, y0, ym, 9);
-      // Flight B (North -> South along outer lane x=+5.75, z: -2.3 -> +2.1)
       this._addStaircase(buckets, cx, cz, 5.75, 5.75, -2.3, 2.1, ym, yNext, 9);
-      // Thin center stairwell wall divider between lanes A & B (keeps lanes neat)
       addBox(4.55, yMid, -0.1, 0.14, H, 4.4, 'concrete', false, true);
 
-      lod1.push(makeBoxGeo(W, H, t, 0, yMid, D / 2));
-      lod1.push(makeBoxGeo(W, H, t, 0, yMid, -D / 2));
-      lod1.push(makeBoxGeo(t, H, D, -W / 2, yMid, 0));
-      lod1.push(makeBoxGeo(t, H, D, W / 2, yMid, 0));
+      lod1.push(makeBoxGeo(W, H, t, 0, yMid, D / 2, 0, 0, 0, 0.25, 0.85, 1.0, true));
+      lod1.push(makeBoxGeo(W, H, t, 0, yMid, -D / 2, 0, 0, 0, 0.25, 0.85, 1.0, true));
+      lod1.push(makeBoxGeo(t, H, D, -W / 2, yMid, 0, 0, 0, 0, 0.25, 0.85, 1.0, true));
+      lod1.push(makeBoxGeo(t, H, D, W / 2, yMid, 0, 0, 0, 0, 0.25, 0.85, 1.0, true));
     }
 
     // ROOFTOP TERRACE PARAPETS (at y = 0.2 + 5 * 3.1 = 15.7m!)
     const roofY = 0.2 + stories * H;
-    // Ruined concrete perimeter rooftop parapet (1.05m chest-high cover around all 4 edges, excluding South stairwell entry)
     addBox(0, roofY + 0.52, -D / 2, W, 1.05, t, 'concrete');
     addBox(-W / 2, roofY + 0.52, 0, t, 1.05, D, 'concrete');
     addBox(W / 2, roofY + 0.52, 0, t, 1.05, D, 'concrete');
     addBox(0, roofY + 0.52, D / 2, W, 1.05, t, 'concrete');
-    // Stairwell penthouse head-house walls (protects roof stair opening!)
     addBox(2.2, roofY + 1.1, -1.4, 0.24, 2.2, 6.8, 'concrete');
     addBox(W / 2, roofY + 1.1, -1.4, t, 2.2, 6.8, 'concrete');
     addBox(4.6, roofY + 1.1, -D / 2, 4.8, 2.2, t, 'concrete');
     addBox(4.6, roofY + 2.2, -1.4, 4.8, 0.2, 6.8, 'concrete');
-    // Roof AC / water tank cover blocks
-    addBox(-4.2, roofY + 0.55, -1.6, 1.6, 1.1, 1.4, 'trimDark');
+    addBox(-4.2, roofY + 0.55, -1.6, 1.6, 1.1, 1.4, 'trimDark', false, true, false);
 
-    // Exterior weathered facade cornice band accents (4 exterior perimeter strips only — never spanning interior floors or stairwell!)
+    // Exterior weathered facade cornice band accents
     for (let f = 1; f <= stories; f++) {
       const cy = 0.2 + f * H;
-      buckets.trimDark.push(makeBoxGeo(W + 0.32, 0.16, 0.24, 0, cy, D / 2 + 0.08));
-      buckets.trimDark.push(makeBoxGeo(W + 0.32, 0.16, 0.24, 0, cy, -D / 2 - 0.08));
-      buckets.trimDark.push(makeBoxGeo(0.24, 0.16, D + 0.16, -W / 2 - 0.08, cy, 0));
-      buckets.trimDark.push(makeBoxGeo(0.24, 0.16, D + 0.16, W / 2 + 0.08, cy, 0));
+      buckets.trimDark.push(makeBoxGeo(W + 0.32, 0.16, 0.24, 0, cy, D / 2 + 0.08, 0, 0, 0, 0.25, 0.84, 1.0));
+      buckets.trimDark.push(makeBoxGeo(W + 0.32, 0.16, 0.24, 0, cy, -D / 2 - 0.08, 0, 0, 0, 0.25, 0.84, 1.0));
+      buckets.trimDark.push(makeBoxGeo(0.24, 0.16, D + 0.16, -W / 2 - 0.08, cy, 0, 0, 0, 0, 0.25, 0.84, 1.0));
+      buckets.trimDark.push(makeBoxGeo(0.24, 0.16, D + 0.16, W / 2 + 0.08, cy, 0, 0, 0, 0, 0.25, 0.84, 1.0));
     }
 
     const lod = new THREE.LOD();
@@ -603,14 +756,11 @@ export class VillageBuilder {
     const g0 = new THREE.Group();
     for (const [k, list] of Object.entries(buckets)) {
       if (!list.length) continue;
-      const mesh = new THREE.Mesh(mergeGeometries(list, false), this.mats[k]);
-      mesh.castShadow = k === 'concrete' || k === 'brick';
-      mesh.receiveShadow = true;
-      g0.add(mesh);
+      const mesh = new THREE.Mesh(mergeGeometries(list, false), this.archMats[k]);
+      g0.add(this._registerGIMesh(mesh));
     }
-    const g1 = new THREE.Mesh(mergeGeometries(lod1, false), this.mats.concrete);
-    g1.castShadow = false;
-    g1.receiveShadow = true;
+    const g1 = new THREE.Mesh(mergeGeometries(lod1, false), this.archMats.concrete);
+    this._registerGIMesh(g1);
     const g2 = new THREE.Mesh(new THREE.BoxGeometry(W, roofY, D), this.mats.concrete);
     g2.position.y = roofY * 0.5;
 
@@ -661,20 +811,19 @@ export class VillageBuilder {
     ];
     const buckets = { brick: [], concrete: [] };
     for (const s of segments) {
-      buckets[s.mat].push(makeBoxGeo(s.w, s.h, s.d, s.x, s.h / 2, s.z));
+      buckets[s.mat].push(makeBoxGeo(s.w, s.h, s.d, s.x, s.h / 2, s.z, 0, 0, 0, 0.25, 0.82, 1.0, true));
       this.physics.addStaticBox(
         { x: s.x, y: s.h / 2, z: s.z },
         { x: s.w / 2, y: s.h / 2, z: s.d / 2 },
         null,
         { material: s.mat, kind: 'wall', penetrable: false }
       );
+      this._recordOccluder(s.x, s.h / 2, s.z, s.w * 0.5, s.h * 0.5, s.d * 0.5, 0, 0, 0, 'wall');
     }
     for (const [matKey, geos] of Object.entries(buckets)) {
       if (!geos.length) continue;
-      const m = new THREE.Mesh(mergeGeometries(geos, false), this.mats[matKey]);
-      m.castShadow = true;
-      m.receiveShadow = true;
-      this.scene.add(m);
+      const m = new THREE.Mesh(mergeGeometries(geos, false), this.archMats[matKey]);
+      this.scene.add(this._registerGIMesh(m));
     }
   }
 
@@ -684,9 +833,12 @@ export class VillageBuilder {
       physMat = 'concrete',
       collide = false,
       colorOverride = null,
-      castShadow = false,
-      receiveShadow = true,
       colliderScale = 1.0,
+      probeTint = null,
+      recordOccluder = false,
+      occluderKind = 'prop',
+      blobRadius = 0,
+      blobOpacity = 0.62,
     } = opts;
     gltf.scene.updateMatrixWorld(true);
     const parts = [];
@@ -698,9 +850,11 @@ export class VillageBuilder {
       geo.computeBoundingBox();
       if (geo.boundingBox) totalBox.union(geo.boundingBox);
       const srcMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
-      const mat = new THREE.MeshLambertMaterial({
+      const mat = createBakedLitBasicMaterial({
         map: srcMat?.map || null,
         color: colorOverride !== null ? colorOverride : (srcMat?.color ? srcMat.color.clone() : 0xffffff),
+        specBoost: physMat === 'metal' ? 0.14 : 0.0,
+        probeTint,
       });
       parts.push({ geo, mat });
     });
@@ -718,8 +872,6 @@ export class VillageBuilder {
     const dummy = new THREE.Object3D();
     for (const part of parts) {
       const inst = new THREE.InstancedMesh(part.geo, part.mat, placements.length);
-      inst.castShadow = castShadow;
-      inst.receiveShadow = receiveShadow;
       inst.frustumCulled = false;
       placements.forEach((pl, i) => {
         dummy.position.set(pl.x, pl.y || 0, pl.z);
@@ -732,17 +884,43 @@ export class VillageBuilder {
       this.scene.add(inst);
     }
 
-    if (collide) {
-      placements.forEach((pl) => {
-        const sc = (pl.s || 1) * colliderScale;
+    placements.forEach((pl) => {
+      const sc = (pl.s || 1) * colliderScale;
+      const py = pl.y || 0;
+      if (collide) {
         this.physics.addStaticBox(
-          { x: pl.x, y: (pl.y || 0) + size.y * (pl.s || 1) * 0.5, z: pl.z },
+          { x: pl.x, y: py + size.y * (pl.s || 1) * 0.5, z: pl.z },
           { x: size.x * 0.5 * sc, y: size.y * 0.5 * (pl.s || 1), z: size.z * 0.5 * sc },
           { x: 0, y: pl.ry || 0, z: 0 },
           { material: physMat, kind: 'prop', penetrable: physMat === 'wood' }
         );
-      });
-    }
+      }
+      if (recordOccluder) {
+        this._recordOccluder(
+          pl.x,
+          py + size.y * (pl.s || 1) * 0.5,
+          pl.z,
+          size.x * 0.48 * (pl.s || 1),
+          size.y * 0.48 * (pl.s || 1),
+          size.z * 0.48 * (pl.s || 1),
+          0,
+          pl.ry || 0,
+          0,
+          occluderKind
+        );
+      }
+      if (blobRadius > 0 && Math.abs(py) < 0.25) {
+        this.staticShadowBlobs.push({
+          x: pl.x,
+          y: py + 0.024,
+          z: pl.z,
+          sx: blobRadius * 2 * (pl.s || 1),
+          sz: blobRadius * 2 * (pl.s || 1),
+          ry: pl.ry || 0,
+          opacity: blobOpacity,
+        });
+      }
+    });
   }
 
   async _buildPropsAndWrecks() {
@@ -778,11 +956,29 @@ export class VillageBuilder {
       this.assets.loadModel('rollershutter'),
     ]);
 
+    const sampledTint = new THREE.Vector3(1, 1, 1);
+
     const placeProp = (gltf, pos, rotY, scale = 1.0, physMat = 'concrete', opts = {}) => {
-      const { dynamic = false, mass = 16, collide = true, cullDist = 42, castShadow = false, tiny = false } = opts;
+      const { dynamic = false, mass = 16, collide = true, cullDist = 42, tiny = false, isVehicle = false } = opts;
       const clone = gltf.scene.clone(true);
+      const propMats = [];
       clone.traverse((o) => {
-        if (o.isMesh) o.castShadow = castShadow;
+        if (!o.isMesh) return;
+        const conv = (m) => {
+          if (!m) return m;
+          const isGlass = !!(m.transmission > 0 || m.transparent || m.opacity < 0.99);
+          const bakedMat = createBakedLitBasicMaterial({
+            color: m.color ? m.color.clone() : 0xffffff,
+            map: m.map || null,
+            vertexColors: !!(m.vertexColors && o.geometry?.attributes?.color),
+            transparent: isGlass,
+            opacity: isGlass ? Math.min(0.42, m.opacity || 0.36) : 1.0,
+            specBoost: !isGlass && physMat === 'metal' ? 0.16 : 0.0,
+          });
+          propMats.push(bakedMat);
+          return bakedMat;
+        };
+        o.material = Array.isArray(o.material) ? o.material.map(conv) : conv(o.material);
       });
       clone.scale.setScalar(scale);
       clone.updateMatrixWorld(true);
@@ -792,6 +988,13 @@ export class VillageBuilder {
       box.getCenter(center);
       box.getSize(size);
       clone.position.set(-center.x, -box.min.y, -center.z);
+
+      if (this.probeGrid.data) {
+        this.probeGrid.sample(pos.x, (pos.y || 0) + 0.55, pos.z, sampledTint, 0.46);
+        for (const m of propMats) {
+          m.userData?.bakedUniforms?.uProbeTint?.value.copy(sampledTint);
+        }
+      }
 
       if (dynamic) {
         const wrapper = new THREE.Group();
@@ -805,6 +1008,7 @@ export class VillageBuilder {
           mass,
           { material: physMat, kind: 'prop', penetrable: physMat === 'wood' }
         );
+        this.dynamicPropSyncs.push({ wrapper, mats: propMats, tint: new THREE.Vector3(1, 1, 1) });
         return;
       }
 
@@ -836,15 +1040,42 @@ export class VillageBuilder {
           { material: physMat, kind: 'prop', penetrable: physMat === 'wood' }
         );
       }
+
+      if (!tiny) {
+        this._recordOccluder(
+          pos.x,
+          (pos.y || 0) + size.y * 0.5,
+          pos.z,
+          size.x * 0.46,
+          size.y * 0.48,
+          size.z * 0.46,
+          0,
+          rotY,
+          0,
+          isVehicle ? 'vehicle' : 'prop',
+          0x585d60
+        );
+      }
+      if (isVehicle && Math.abs(pos.y || 0) < 0.2) {
+        this.staticShadowBlobs.push({
+          x: pos.x,
+          y: (pos.y || 0) + 0.025,
+          z: pos.z,
+          sx: size.x * 1.25,
+          sz: size.z * 1.18,
+          ry: rotY,
+          opacity: 0.72,
+        });
+      }
     };
 
     // Street Vehicle Wrecks (burnt pickups, sedans, tarp-covered cars — spaced clearly away from lamps & barriers)
-    placeProp(pickupGltf, { x: -2.0, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 46, castShadow: true });
-    placeProp(sedanGltf, { x: 1.85, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 46, castShadow: true });
-    placeProp(carGltf, { x: -1.35, y: 0.03, z: -15.4 }, 0.92, 0.96, 'metal', { cullDist: 46, castShadow: false });
-    placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 46, castShadow: false });
+    placeProp(pickupGltf, { x: -2.0, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 46, isVehicle: true });
+    placeProp(sedanGltf, { x: 1.85, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 46, isVehicle: true });
+    placeProp(carGltf, { x: -1.35, y: 0.03, z: -15.4 }, 0.92, 0.96, 'metal', { cullDist: 46, isVehicle: true });
+    placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 46, isVehicle: true });
 
-    // Road Barriers (batched into 1 InstancedMesh draw call + collided!)
+    // Road Barriers (batched into 1 InstancedMesh draw call + collided + baked occluders + contact blobs!)
     this._placeInstancedGltf(
       barrierGltf,
       [
@@ -854,7 +1085,7 @@ export class VillageBuilder {
         { x: -3.2, y: 0.03, z: -25.0, ry: 0.08, s: 0.95 },
         { x: 3.2, y: 0.03, z: -25.0, ry: -0.1, s: 0.95 },
       ],
-      { physMat: 'concrete', collide: true }
+      { physMat: 'concrete', collide: true, recordOccluder: true, blobRadius: 1.05 }
     );
 
     // Street Lamps lining inner curb (batched via InstancedMesh + slim post colliders)
@@ -877,7 +1108,7 @@ export class VillageBuilder {
     placeProp(shutterGltf, { x: -15.1, y: 0.2, z: 4.02 }, 0, 0.85, 'metal', { collide: true, cullDist: 36 });
     placeProp(shutterGltf, { x: -15.3, y: 0.2, z: -20.02 }, Math.PI, 0.85, 'metal', { collide: true, cullDist: 36 });
 
-    // Tyre Barricades & Corner Clusters (1 InstancedMesh draw call + collided!)
+    // Tyre Barricades & Corner Clusters (1 InstancedMesh draw call + collided + contact blobs!)
     this._placeInstancedGltf(
       tyreGltf,
       [
@@ -888,7 +1119,7 @@ export class VillageBuilder {
         { x: -4.6, y: 0.03, z: -26.5, ry: 3.2, s: 1.0 },
         { x: 7.4, y: 0.03, z: 5.5, ry: 4.0, s: 1.0 },
       ],
-      { physMat: 'dirt', collide: true }
+      { physMat: 'dirt', collide: true, recordOccluder: true, blobRadius: 0.68 }
     );
 
     // Generators & Jerrycans
@@ -897,19 +1128,19 @@ export class VillageBuilder {
     placeProp(jerryGltf, { x: -13.6, y: 0.2, z: 1.8 }, 0.6, 1.0, 'metal', { dynamic: true, mass: 10 });
     placeProp(jerryGltf, { x: -4.4, y: 0.2, z: -34.2 }, -0.4, 1.0, 'metal', { dynamic: true, mass: 10 });
 
-    // Interior Wooden Tables inside houses & tower (1 InstancedMesh draw call + collided!)
+    // Interior Wooden Tables inside houses & tower (1 InstancedMesh draw call + indoor ambient tint!)
     this._placeInstancedGltf(
       tableGltf,
       [
         { x: -13.5, y: 0.2, z: 19.6, ry: 0.1, s: 1.0 },
         { x: 13.4, y: 0.2, z: 16.0, ry: -0.2, s: 1.0 },
-        { x: 13.0, y: 3.3, z: -1.8, ry: 0.4, s: 1.0 },
-        { x: -13.2, y: 3.3, z: 18.2, ry: -0.3, s: 1.0 },
-        { x: -3.2, y: 0.2, z: -34.6, ry: 0.0, s: 1.0 },
-        { x: -3.0, y: 6.4, z: -33.2, ry: 0.2, s: 1.0 },
+        { x: 10.6, y: 3.3, z: -3.2, ry: 0.4, s: 1.0 },
+        { x: -10.6, y: 3.3, z: 19.8, ry: -0.3, s: 1.0 },
+        { x: -4.6, y: 0.2, z: -31.6, ry: 0.0, s: 1.0 },
+        { x: -4.6, y: 6.4, z: -33.2, ry: 0.2, s: 1.0 },
         { x: -2.8, y: 12.6, z: -32.2, ry: -0.2, s: 1.0 },
       ],
-      { physMat: 'wood', collide: true }
+      { physMat: 'wood', collide: true, probeTint: new THREE.Vector3(0.76, 0.75, 0.74) }
     );
 
     // Interactive Walkable Medkit Pickups (+35 HP each!) at tactical cover & building interiors
@@ -928,6 +1159,21 @@ export class VillageBuilder {
     medSpots.forEach((sp, idx) => {
       const grp = new THREE.Group();
       const mClone = medGltf.scene.clone(true);
+      if (this.probeGrid.data) {
+        this.probeGrid.sample(sp.x, sp.y + 0.3, sp.z, sampledTint, 0.54);
+      } else {
+        sampledTint.set(1, 1, 1);
+      }
+      mClone.traverse((o) => {
+        if (o.isMesh && o.material) {
+          o.material = createBakedLitBasicMaterial({
+            color: o.material.color ? o.material.color.clone() : 0xffffff,
+            map: o.material.map || null,
+            specBoost: 0.08,
+            probeTint: sampledTint,
+          });
+        }
+      });
       mClone.updateMatrixWorld(true);
       const rawBx = new THREE.Box3().setFromObject(mClone);
       const rawSz = new THREE.Vector3();
@@ -974,11 +1220,26 @@ export class VillageBuilder {
       { x: -11.4, y: 0.30, z: 1.0 },   // House 2 Garage interior
       { x: 12.2, y: 3.40, z: -1.6 },   // House 3 Floor 2 overlook
       { x: 3.2, y: 0.14, z: -19.8 },   // North Plaza east flank
-      { x: -2.4, y: 9.60, z: -32.2 },  // 5-Story Tower Floor 4
+      { x: -1.6, y: 9.60, z: -34.2 },  // 5-Story Tower Floor 4
     ];
     ammoSpots.forEach((sp, idx) => {
       const grp = new THREE.Group();
       const aClone = ammoGltf.scene.clone(true);
+      if (this.probeGrid.data) {
+        this.probeGrid.sample(sp.x, sp.y + 0.3, sp.z, sampledTint, 0.54);
+      } else {
+        sampledTint.set(1, 1, 1);
+      }
+      aClone.traverse((o) => {
+        if (o.isMesh && o.material) {
+          o.material = createBakedLitBasicMaterial({
+            color: o.material.color ? o.material.color.clone() : 0xffffff,
+            map: o.material.map || null,
+            specBoost: 0.08,
+            probeTint: sampledTint,
+          });
+        }
+      });
       aClone.scale.setScalar(0.85);
       const bx = new THREE.Box3().setFromObject(aClone);
       const bc = new THREE.Vector3();
@@ -1061,8 +1322,19 @@ export class VillageBuilder {
     return addedAmmo;
   }
 
+  updateDynamicPropLighting() {
+    if (!this.probeGrid.data || !this.dynamicPropSyncs.length) return;
+    for (const item of this.dynamicPropSyncs) {
+      const p = item.wrapper.position;
+      this.probeGrid.sample(p.x, p.y + 0.25, p.z, item.tint, 0.46);
+      for (const m of item.mats) {
+        m.userData?.bakedUniforms?.uProbeTint?.value.copy(item.tint);
+      }
+    }
+  }
+
   async _buildFoliageAndUtilityLines() {
-    const [tree1, tree1Lod, tree2, tree2Lod, bushGltf, grassGltf, rockGltf] = await Promise.all([
+    const [tree1, _tree1Lod, tree2, _tree2Lod, bushGltf, grassGltf, rockGltf] = await Promise.all([
       this.assets.loadModel('dead_tree1'),
       this.assets.loadModel('dead_tree1_lod'),
       this.assets.loadModel('dead_tree2'),
@@ -1072,14 +1344,14 @@ export class VillageBuilder {
       this.assets.loadModel('rock'),
     ]);
 
-    // Lush Green European Pine Forest lining village yards, street flanks & ridges (matched LOD0 + LOD1 silhouette!)
+    // Lush Green European Pine Forest batched into InstancedMeshes (world-normal baked shader, zero draw-call bloat!)
     const treeSpots = [
       { x: -19.8, z: 27.5, s: 1.05 }, { x: 19.8, z: 26.5, s: 1.12 },
       { x: -20.5, z: 12.2, s: 1.0 }, { x: 20.5, z: 11.4, s: 1.08 },
       { x: -20.5, z: -6.5, s: 1.15 }, { x: 20.5, z: -8.5, s: 1.05 },
       { x: -19.5, z: -24.5, s: 1.10 }, { x: 19.5, z: -26.0, s: 1.18 },
       { x: -15.5, z: -38.5, s: 1.15 }, { x: 15.5, z: -38.5, s: 1.08 },
-      { x: -7.5, z: -26.5, s: 0.92 }, { x: 8.2, z: -26.2, s: 0.96 },
+      { x: -10.2, z: -26.8, s: 0.92 }, { x: 10.2, z: -26.8, s: 0.96 },
       { x: -19.0, z: 35.5, s: 1.22 }, { x: 19.0, z: 35.0, s: 1.15 },
       // Outer woodland backdrop beyond perimeter wall for dense forest silhouette
       { x: -29.0, z: 24.0, s: 1.35 }, { x: 29.0, z: 20.0, s: 1.30 },
@@ -1087,42 +1359,78 @@ export class VillageBuilder {
       { x: -28.5, z: -22.0, s: 1.38 }, { x: 28.5, z: -25.0, s: 1.30 },
       { x: -24.0, z: -48.5, s: 1.42 }, { x: 24.0, z: -48.5, s: 1.40 },
     ];
-    const pineLeafMat = new THREE.MeshLambertMaterial({ color: 0x365c2b });
-    const pineBarkMat = new THREE.MeshLambertMaterial({ color: 0x5d4534 });
-    const prepTreeClone = (srcScene) => {
-      const clone = srcScene.clone(true);
-      clone.traverse((o) => {
-        if (!o.isMesh) return;
-        o.castShadow = false;
-        o.receiveShadow = true;
-        if (Array.isArray(o.material)) {
-          o.material = o.material.map((m) =>
-            m?.name?.toLowerCase().includes('wood') ? pineBarkMat : pineLeafMat
-          );
-        } else if (o.material) {
-          o.material = o.material.name?.toLowerCase().includes('wood') ? pineBarkMat : pineLeafMat;
-        }
+
+    const pineLeafMat = createBakedLitBasicMaterial({
+      color: 0x3b642e,
+      vertexColors: true,
+      baseFloor: 0.60,
+      hemiWeight: 0.24,
+      sunWeight: 0.40,
+    });
+    const pineBarkMat = createBakedLitBasicMaterial({
+      color: 0x624836,
+      vertexColors: true,
+      baseFloor: 0.58,
+      hemiWeight: 0.22,
+      sunWeight: 0.36,
+    });
+
+    const placeInstancedTreeType = (srcScene, spots, baseScale) => {
+      if (!spots.length) return;
+      srcScene.updateMatrixWorld(true);
+      const parts = [];
+      const totalBox = new THREE.Box3();
+      srcScene.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry) return;
+        const geo = ensureFloatAttributes(obj.geometry.clone());
+        geo.applyMatrix4(obj.matrixWorld);
+        geo.computeBoundingBox();
+        if (geo.boundingBox) totalBox.union(geo.boundingBox);
+        const srcMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+        const isWood = !!srcMat?.name?.toLowerCase().includes('wood');
+        parts.push({ geo, mat: isWood ? pineBarkMat : pineLeafMat });
       });
-      return clone;
+      if (!parts.length || totalBox.isEmpty()) return;
+
+      const center = new THREE.Vector3();
+      totalBox.getCenter(center);
+      const minY = totalBox.min.y;
+      const heightSpan = Math.max(0.1, totalBox.max.y - minY);
+
+      const dummy = new THREE.Object3D();
+      for (const part of parts) {
+        part.geo.translate(-center.x, -minY, -center.z);
+        const posAttr = part.geo.attributes.position;
+        const cols = new Float32Array(posAttr.count * 3);
+        for (let i = 0; i < posAttr.count; i++) {
+          const t = THREE.MathUtils.clamp(posAttr.getY(i) / heightSpan, 0, 1);
+          const v = 0.68 + 0.38 * t;
+          cols[i * 3] = v;
+          cols[i * 3 + 1] = v;
+          cols[i * 3 + 2] = v;
+        }
+        part.geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+
+        const inst = new THREE.InstancedMesh(part.geo, part.mat, spots.length);
+        inst.frustumCulled = false;
+        spots.forEach((sp, i) => {
+          dummy.position.set(sp.x, 0, sp.z);
+          dummy.rotation.set(0, sp.idx * 1.1, 0);
+          dummy.scale.setScalar(sp.s * baseScale);
+          dummy.updateMatrix();
+          inst.setMatrixAt(i, dummy.matrix);
+        });
+        inst.instanceMatrix.needsUpdate = true;
+        this.scene.add(inst);
+      }
     };
 
+    const type1Spots = [];
+    const type2Spots = [];
     treeSpots.forEach((sp, idx) => {
-      const isType1 = idx % 2 === 0;
-      const hi = prepTreeClone((isType1 ? tree1 : tree2).scene);
-      const lo = prepTreeClone((isType1 ? tree1Lod : tree2Lod).scene);
-      // PineTree_1 base height = 2.69m, PineTree_2 = 3.55m -> scale cleanly to 6.5m-9.5m pines
-      const treeScale = sp.s * (isType1 ? 2.35 : 1.95);
-      hi.scale.setScalar(treeScale);
-      lo.scale.setScalar(treeScale);
-
-      const lod = new THREE.LOD();
-      lod.position.set(sp.x, 0, sp.z);
-      lod.rotation.y = idx * 1.1;
-      lod.addLevel(hi, 0);
-      lod.addLevel(lo, 40);
-      this.scene.add(lod);
-      this.lodObjects.push(lod);
-
+      const entry = { ...sp, idx };
+      if (idx % 2 === 0) type1Spots.push(entry);
+      else type2Spots.push(entry);
       if (Math.abs(sp.x) < 24 && Math.abs(sp.z) < 42) {
         this.physics.addStaticBox({ x: sp.x, y: 1.5, z: sp.z }, { x: 0.42, y: 1.5, z: 0.42 }, null, {
           material: 'wood',
@@ -1130,12 +1438,26 @@ export class VillageBuilder {
           penetrable: true,
         });
       }
+      // Record trunk + canopy occluders for ground lightmap & contact AO blob
+      this._recordOccluder(sp.x, 1.5 * sp.s, sp.z, 0.32 * sp.s, 1.5 * sp.s, 0.32 * sp.s, 0, 0, 0, 'wall', 0x4b3b2c);
+      this._recordOccluder(sp.x, 4.6 * sp.s, sp.z, 1.85 * sp.s, 2.3 * sp.s, 1.85 * sp.s, 0, 0, 0, 'canopy', 0x2e4c24);
+      this.staticShadowBlobs.push({
+        x: sp.x,
+        y: 0.025,
+        z: sp.z,
+        sx: 4.1 * sp.s,
+        sz: 4.1 * sp.s,
+        ry: 0,
+        opacity: 0.72,
+      });
     });
+    placeInstancedTreeType(tree1.scene, type1Spots, 2.35);
+    placeInstancedTreeType(tree2.scene, type2Spots, 1.95);
 
-    // Dense Green Woodland Bushes batched into 1 InstancedMesh draw call (no sphere blobs!)
+    // Dense Green Woodland Bushes batched into 1 InstancedMesh draw call (clear of trees & houses!)
     const bushSpots = [
       { x: -19.2, z: 31.2 }, { x: 19.2, z: 30.8 },
-      { x: -19.0, z: 12.8 }, { x: 19.0, z: 11.4 },
+      { x: -17.8, z: 15.2 }, { x: 17.8, z: 14.2 },
       { x: -9.2, z: -23.6 }, { x: 9.6, z: -23.6 },
       { x: -6.4, z: 28.0 }, { x: 6.4, z: 27.5 },
       { x: -16.8, z: 9.8 }, { x: 16.8, z: 9.8 },
@@ -1147,6 +1469,9 @@ export class VillageBuilder {
       collide: true,
       colliderScale: 0.65,
       colorOverride: 0x3b632d,
+      recordOccluder: true,
+      occluderKind: 'canopy',
+      blobRadius: 1.05,
     });
 
     // InstancedMesh Woodland Grass Tufts across unpaved yards & roadsides (1 draw call!)
@@ -1178,7 +1503,7 @@ export class VillageBuilder {
       colorOverride: 0x456b32,
     });
 
-    // Woodland Mossy Granite Boulders batched into 1 InstancedMesh draw call (collided)
+    // Woodland Mossy Granite Boulders batched into 1 InstancedMesh draw call (collided + contact blobs!)
     const rockPlacements = [
       { x: -18.5, z: 23.8, s: 1.1 }, { x: 18.2, z: 22.8, s: 1.0 },
       { x: -18.8, z: 4.0, s: 1.25 }, { x: 18.6, z: -4.2, s: 1.15 },
@@ -1191,40 +1516,41 @@ export class VillageBuilder {
       collide: true,
       colliderScale: 0.85,
       colorOverride: 0x7b8078,
+      recordOccluder: true,
+      blobRadius: 1.0,
     });
 
-    // Timber Telegraph Poles + Overhead Wires placed cleanly outside sidewalks (x = +-6.95, collided)
+    // Timber Telegraph Poles + Overhead Wires placed cleanly outside sidewalks & alleys (Vertex GI!)
     const poleGeos = [];
     const poleXs = [-6.95, 6.95];
+    const poleZs = [-23.5, -8.0, 10.5, 25.5];
     for (const px of poleXs) {
-      for (let pz = -20; pz <= 26; pz += 15) {
-        poleGeos.push(makeBoxGeo(0.22, 6.8, 0.22, px, 3.4, pz));
-        poleGeos.push(makeBoxGeo(1.3, 0.1, 0.1, px, 6.4, pz));
+      for (const pz of poleZs) {
+        poleGeos.push(makeBoxGeo(0.22, 6.8, 0.22, px, 3.4, pz, 0, 0, 0, 0.25, 0.84, 1.0, true));
+        poleGeos.push(makeBoxGeo(1.3, 0.1, 0.1, px, 6.4, pz, 0, 0, 0, 0.25, 0.88, 1.0));
         this.physics.addStaticBox({ x: px, y: 3.4, z: pz }, { x: 0.18, y: 3.4, z: 0.18 }, null, {
           material: 'wood',
           kind: 'prop',
           penetrable: false,
         });
       }
-      poleGeos.push(makeBoxGeo(0.03, 0.03, 46, px - 0.45, 6.3, 3));
-      poleGeos.push(makeBoxGeo(0.03, 0.03, 46, px + 0.45, 6.3, 3));
+      poleGeos.push(makeBoxGeo(0.03, 0.03, 49, px - 0.45, 6.3, 1.0));
+      poleGeos.push(makeBoxGeo(0.03, 0.03, 49, px + 0.45, 6.3, 1.0));
     }
-    const poles = new THREE.Mesh(mergeGeometries(poleGeos, false), this.mats.wood);
-    poles.castShadow = false;
-    poles.receiveShadow = true;
-    this.scene.add(poles);
+    const poles = new THREE.Mesh(mergeGeometries(poleGeos, false), this.archMats.wood);
+    this.scene.add(this._registerGIMesh(poles));
 
-    // Distant overcast ruined industrial/town silhouettes outside the forest perimeter
+    // Distant overcast ruined industrial/town silhouettes outside the forest perimeter (Vertex GI!)
     const skyConcrete = [
-      makeBoxGeo(14, 15, 10, -48, 7.5, -44, 0, 0.2, 0),
-      makeBoxGeo(7, 4, 8, -46, 16.5, -44, 0, 0.2, 0),
-      makeBoxGeo(16, 18, 10, 12, 9, -62, 0, 0.08, 0),
-      makeBoxGeo(8, 5, 9, 10, 20.5, -62, 0, 0.08, 0),
-      makeBoxGeo(13, 12, 11, 46, 6, -34, 0, -0.25, 0),
+      makeBoxGeo(14, 15, 10, -48, 7.5, -44, 0, 0.2, 0, 0.25, 0.78, 1.0, true),
+      makeBoxGeo(7, 4, 8, -46, 16.5, -44, 0, 0.2, 0, 0.25, 0.85, 1.0),
+      makeBoxGeo(16, 18, 10, 12, 9, -62, 0, 0.08, 0, 0.25, 0.78, 1.0, true),
+      makeBoxGeo(8, 5, 9, 10, 20.5, -62, 0, 0.08, 0, 0.25, 0.85, 1.0),
+      makeBoxGeo(13, 12, 11, 46, 6, -34, 0, -0.25, 0, 0.25, 0.78, 1.0, true),
     ];
-    const skylineMat = new THREE.MeshLambertMaterial({ map: this.mats.concrete.map, color: 0x5c6368 });
+    const skylineMat = new THREE.MeshBasicMaterial({ map: this.mats.concrete.map, color: 0x6b747a, vertexColors: true });
     const skyline = new THREE.Mesh(mergeGeometries(skyConcrete, false), skylineMat);
-    this.scene.add(skyline);
+    this.scene.add(this._registerGIMesh(skyline));
   }
 
   _buildRubbleInstances() {
@@ -1256,8 +1582,6 @@ export class VillageBuilder {
 
     const geo = new THREE.DodecahedronGeometry(0.22, 0);
     const mesh = new THREE.InstancedMesh(geo, this.mats.concrete, valid.length);
-    mesh.castShadow = false;
-    mesh.receiveShadow = true;
 
     const dummy = new THREE.Object3D();
     valid.forEach((v, i) => {
@@ -1270,6 +1594,39 @@ export class VillageBuilder {
     });
     mesh.instanceMatrix.needsUpdate = true;
     this.scene.add(mesh);
+  }
+
+  _buildStaticContactShadowBlobs() {
+    this.staticBlobMesh = null;
+    if (!this.shadowBlobTexture || !this.staticShadowBlobs.length) return;
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({
+      map: this.shadowBlobTexture,
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.62,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+    });
+    const inst = new THREE.InstancedMesh(geo, mat, this.staticShadowBlobs.length);
+    inst.frustumCulled = false;
+    const dummy = new THREE.Object3D();
+    this.staticShadowBlobs.forEach((b, i) => {
+      dummy.position.set(b.x, b.y, b.z);
+      dummy.rotation.set(0, b.ry || 0, 0);
+      dummy.scale.set(b.sx, 1, b.sz);
+      dummy.updateMatrix();
+      inst.setMatrixAt(i, dummy.matrix);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    this.scene.add(inst);
+    this.staticBlobMesh = inst;
+  }
+
+  setShadowBlobsEnabled(enabled) {
+    if (this.staticBlobMesh) this.staticBlobMesh.visible = !!enabled;
   }
 
   _buildWaypointAndSpawnGraph() {

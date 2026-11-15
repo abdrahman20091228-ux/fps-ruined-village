@@ -12,7 +12,14 @@ import { AudioSystem } from './audio/audioSystem.js';
 import { WeaponSystem } from './weapons/weapons.js';
 import { EnemySystem } from './ai/enemySystem.js';
 
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+
 const settings = loadSettings();
+if (!settings.gyroMode) {
+  settings.gyroMode = settings.gyroEnabled === false ? 'off' : 'always';
+}
 const canvas = document.getElementById('game-canvas');
 const engine = new GameEngine(canvas, settings);
 const physics = new PhysicsWorld();
@@ -25,16 +32,74 @@ const weapons = new WeaponSystem(engine.camera, physics, effects, audio);
 const enemySys = new EnemySystem(engine.scene, physics, assets, effects, audio);
 
 let village = null;
+let allLodObjects = [];
 let totalEnemies = 0;
 let gameState = 'loading'; // loading | menu | intro | playing | paused | ended
 let introTime = 0;
 const INTRO_DURATION = 3.4;
-let hitStopTimer = 0;
 let hitMarkerTimer = 0;
 let damageFlashTimer = 0;
 let missionBannerTimer = 0;
 let medkitToastTimer = 0;
+let heartbeatAccum = 0;
+let radarAccum = 0.066;
 let worldBuilt = false;
+
+const _upVec = new THREE.Vector3(0, 1, 0);
+const _playerProbeTint = new THREE.Vector3(1, 1, 1);
+
+const hudEls = {
+  hud: document.getElementById('hud'),
+  touchControls: document.getElementById('touch-controls'),
+  hitMarker: document.getElementById('hit-marker'),
+  crosshair: document.getElementById('crosshair'),
+  reloadPill: document.getElementById('reload-pill'),
+  reloadFill: document.getElementById('reload-fill'),
+  damageVignette: document.getElementById('damage-vignette'),
+  damageArcs: Array.from(document.querySelectorAll('#damage-indicators .dmg-arc')),
+  missionBanner: document.getElementById('mission-banner'),
+  medkitToast: document.getElementById('medkit-toast'),
+  fpsCounter: document.getElementById('fps-counter'),
+  debugTris: document.getElementById('debug-tris'),
+  compassDir: document.getElementById('compass-dir'),
+  compassThreats: document.getElementById('compass-threats'),
+  zoneIndicator: document.getElementById('zone-indicator'),
+  objectiveCount: document.getElementById('objective-count'),
+  weaponName: document.getElementById('weapon-name'),
+  ammoMag: document.getElementById('ammo-mag'),
+  ammoReserve: document.getElementById('ammo-reserve'),
+  hpValue: document.getElementById('hp-value'),
+  hpBarFill: document.getElementById('hp-bar-fill'),
+  btnDoor: document.getElementById('btn-door'),
+  interactPrompt: document.getElementById('interact-prompt'),
+};
+
+const hudPrev = {
+  fpsText: '',
+  debugText: '',
+  debugHidden: null,
+  compassText: '',
+  zoneText: '',
+  objText: '',
+  weaponText: '',
+  magText: '',
+  reserveText: '',
+  hpText: '',
+  hpWidth: '',
+  reloadVisible: false,
+  reloadPct: '',
+  doorVisible: null,
+  chGap: '',
+  chOpacity: '',
+};
+
+function setGameState(next) {
+  gameState = next;
+  input.setGameplayActive(next === 'playing');
+  if (next === 'playing') {
+    radarAccum = 0.066;
+  }
+}
 
 // Pooled dynamic directional damage arcs (track exact attacker world position as player turns!)
 const damageHits = []; // [{ sourcePos: THREE.Vector3, timer: number, maxTimer: number }]
@@ -69,21 +134,26 @@ function fmtMB(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function showHitMarker() {
-  hitMarkerTimer = 0.14;
-  document.getElementById('hit-marker').classList.remove('hidden');
+function showHitMarker(isHead = false, isKill = false) {
+  hitMarkerTimer = 0.15;
+  if (hudEls.hitMarker) {
+    hudEls.hitMarker.classList.toggle('headshot', !!isHead);
+    hudEls.hitMarker.classList.remove('hidden');
+  }
+  audio.playHitMarker(!!isHead, !!isKill);
 }
 
 function showMissionBanner() {
   missionBannerTimer = 4.5;
-  document.getElementById('mission-banner').classList.remove('hidden');
+  hudEls.missionBanner?.classList.remove('hidden');
 }
 
 function showPickupToast(msg) {
   medkitToastTimer = 2.0;
-  const el = document.getElementById('medkit-toast');
-  el.textContent = msg;
-  el.classList.remove('hidden');
+  if (hudEls.medkitToast) {
+    hudEls.medkitToast.textContent = msg;
+    hudEls.medkitToast.classList.remove('hidden');
+  }
 }
 
 function onPlayerDamaged(amount, sourcePos) {
@@ -105,8 +175,9 @@ function onPlayerDamaged(amount, sourcePos) {
     }
   }
 
-  const vig = document.getElementById('damage-vignette');
-  vig.style.boxShadow = 'inset 0 0 90px rgba(188, 34, 24, 0.70)';
+  if (hudEls.damageVignette) {
+    hudEls.damageVignette.style.boxShadow = 'inset 0 0 90px rgba(188, 34, 24, 0.70)';
+  }
 
   if (player.health <= 0) {
     finishMission(false);
@@ -114,7 +185,7 @@ function onPlayerDamaged(amount, sourcePos) {
 }
 
 function updateDynamicDamageIndicators(dt) {
-  const arcs = document.querySelectorAll('#damage-indicators .dmg-arc');
+  const arcs = hudEls.damageArcs;
   for (let i = damageHits.length - 1; i >= 0; i--) {
     damageHits[i].timer -= dt;
     if (damageHits[i].timer <= 0) damageHits.splice(i, 1);
@@ -276,7 +347,7 @@ function drawTacticalRadar() {
 }
 
 function finishMission(victory) {
-  gameState = 'ended';
+  setGameState('ended');
   input.clearActiveInputs();
   weapons.setVisible(false);
   if (Math.abs(engine.camera.fov - 72) > 0.1) {
@@ -285,8 +356,12 @@ function finishMission(victory) {
   }
   damageHits.length = 0;
   updateDynamicDamageIndicators(0);
-  document.getElementById('hud').classList.add('hidden');
-  document.getElementById('touch-controls').classList.add('hidden');
+  if (hudPrev.reloadVisible) {
+    hudEls.reloadPill?.classList.add('hidden');
+    hudPrev.reloadVisible = false;
+  }
+  hudEls.hud?.classList.add('hidden');
+  hudEls.touchControls?.classList.add('hidden');
   document.getElementById('end-screen').classList.remove('hidden');
   document.getElementById('end-badge').textContent = victory ? 'MISSION ACCOMPLISHED' : 'MIA // OPERATIVE DOWN';
   document.getElementById('end-title').textContent = victory ? 'VILLAGE SECURED' : 'ASSAULT FAILED';
@@ -353,6 +428,11 @@ async function buildWorld() {
     village = new VillageBuilder(engine.scene, physics, doorSystem, assets);
     await village.build();
     audio.setIndoorZones(village.indoorZones);
+    enemySys.setProbeGrid(village.probeGrid);
+
+    const qPreset = QUALITY_PRESETS[settings.quality] || QUALITY_PRESETS.medium;
+    village.setShadowBlobsEnabled(qPreset.shadowBlobs !== false);
+    enemySys.setDynamicBlobsEnabled(qPreset.dynamicBlobs !== false);
 
     const [pistolGltf, akmGltf, m4Gltf, holoGltf] = await Promise.all([
       assets.loadModel('pistol'),
@@ -368,15 +448,20 @@ async function buildWorld() {
 
   await audio.loadClips(AUDIO_CLIPS, (url) => assets.getArrayBuffer(url));
   await enemySys.spawnVillageSquad(village, settings.difficulty);
+  allLodObjects = village ? [...village.lodObjects, ...enemySys.lodObjects] : [...enemySys.lodObjects];
   totalEnemies = enemySys.getRemainingCount();
   player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
+  weapons.resetAll(settings.preferredWeapon || 'm4');
+  weapons.updateLighting(_playerProbeTint.set(1, 1, 1), 0);
   weapons.setVisible(false);
+  engine.warmupShaders();
+  assets.releaseTransientCache();
 }
 
 async function restartMission() {
   document.getElementById('end-screen').classList.add('hidden');
   input.clearActiveInputs();
-  weapons.resetAll();
+  weapons.resetAll(settings.preferredWeapon || 'm4');
   if (Math.abs(engine.camera.fov - 72) > 0.1) {
     engine.camera.fov = 72;
     engine.camera.updateProjectionMatrix();
@@ -384,16 +469,20 @@ async function restartMission() {
   village?.resetMedkits();
   village?.resetAmmoBoxes();
   await enemySys.spawnVillageSquad(village, settings.difficulty);
+  allLodObjects = village ? [...village.lodObjects, ...enemySys.lodObjects] : [...enemySys.lodObjects];
   totalEnemies = enemySys.getRemainingCount();
   player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
   damageHits.length = 0;
+  heartbeatAccum = 0;
   updateDynamicDamageIndicators(0);
-  document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
+  if (hudEls.damageVignette) {
+    hudEls.damageVignette.style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
+  }
 
   document.getElementById('main-menu').classList.add('hidden');
-  document.getElementById('hud').classList.remove('hidden');
-  document.getElementById('touch-controls').classList.remove('hidden');
-  gameState = 'playing';
+  hudEls.hud?.classList.remove('hidden');
+  hudEls.touchControls?.classList.remove('hidden');
+  setGameState('playing');
   weapons.setVisible(true);
   showMissionBanner();
 }
@@ -401,24 +490,24 @@ async function restartMission() {
 function bindUI() {
   const loadingScreen = document.getElementById('loading-screen');
   const mainMenu = document.getElementById('main-menu');
-  const hud = document.getElementById('hud');
-  const touchControls = document.getElementById('touch-controls');
+  const hud = hudEls.hud;
+  const touchControls = hudEls.touchControls;
   const settingsModal = document.getElementById('settings-modal');
   const loadoutModal = document.getElementById('loadout-modal');
 
   loadingScreen.classList.add('hidden');
   mainMenu.classList.remove('hidden');
-  gameState = 'menu';
+  setGameState('menu');
   weapons.setVisible(false);
 
   const finishIntro = () => {
     if (gameState !== 'intro') return;
     document.getElementById('intro-overlay').classList.add('hidden');
     input.clearActiveInputs();
-    hud.classList.remove('hidden');
-    touchControls.classList.remove('hidden');
+    hud?.classList.remove('hidden');
+    touchControls?.classList.remove('hidden');
     document.getElementById('btn-restart-menu').classList.remove('hidden');
-    gameState = 'playing';
+    setGameState('playing');
     weapons.drawTimer = 0.35;
     weapons.setVisible(true);
     showMissionBanner();
@@ -431,26 +520,28 @@ function bindUI() {
       village?.resetMedkits();
       village?.resetAmmoBoxes();
       await enemySys.spawnVillageSquad(village, settings.difficulty);
+      allLodObjects = village ? [...village.lodObjects, ...enemySys.lodObjects] : [...enemySys.lodObjects];
       totalEnemies = enemySys.getRemainingCount();
       player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
-      weapons.resetAll();
+      weapons.resetAll(settings.preferredWeapon || 'm4');
       damageHits.length = 0;
+      heartbeatAccum = 0;
       mainMenu.classList.add('hidden');
-      hud.classList.add('hidden');
-      touchControls.classList.add('hidden');
+      hud?.classList.add('hidden');
+      touchControls?.classList.add('hidden');
       weapons.setVisible(false);
       introTime = 0;
       document.getElementById('intro-subtitle').textContent =
         `${totalEnemies} HOSTILES DETECTED — BREACH HOUSES & 5-STORY TOWER`;
       document.getElementById('intro-overlay').classList.remove('hidden');
-      gameState = 'intro';
+      setGameState('intro');
       return;
     }
     mainMenu.classList.add('hidden');
-    hud.classList.remove('hidden');
-    touchControls.classList.remove('hidden');
+    hud?.classList.remove('hidden');
+    touchControls?.classList.remove('hidden');
     document.getElementById('btn-restart-menu').classList.remove('hidden');
-    gameState = 'playing';
+    setGameState('playing');
     weapons.setVisible(true);
     showMissionBanner();
   };
@@ -472,7 +563,7 @@ function bindUI() {
     document.getElementById('intro-overlay').classList.add('hidden');
     mainMenu.classList.remove('hidden');
     document.getElementById('btn-resume').classList.add('hidden');
-    gameState = 'menu';
+    setGameState('menu');
     weapons.setVisible(false);
   });
 
@@ -482,16 +573,43 @@ function bindUI() {
       engine.camera.fov = 72;
       engine.camera.updateProjectionMatrix();
     }
-    hud.classList.add('hidden');
-    touchControls.classList.add('hidden');
+    hud?.classList.add('hidden');
+    touchControls?.classList.add('hidden');
     mainMenu.classList.remove('hidden');
     document.getElementById('btn-resume').classList.remove('hidden');
-    gameState = 'paused';
+    setGameState('paused');
     weapons.setVisible(false);
+  });
+
+  const gyroStatusEl = document.getElementById('gyro-status-text');
+  const quickGyroBtn = document.getElementById('btn-quick-gyro');
+  const quickGyroLabel = document.getElementById('quick-gyro-label');
+  const setGyroMode = document.getElementById('set-gyro-mode');
+
+  const syncQuickGyro = () => {
+    const mode = settings.gyroMode || (settings.gyroEnabled === false ? 'off' : 'always');
+    if (quickGyroLabel) {
+      quickGyroLabel.textContent = mode === 'always' ? 'GYRO: ON' : mode === 'ads' ? 'GYRO: ADS' : 'GYRO: OFF';
+    }
+    quickGyroBtn?.classList.toggle('is-off', mode === 'off');
+    if (setGyroMode) setGyroMode.value = mode;
+    if (gyroStatusEl) gyroStatusEl.textContent = `(${input.getGyroStatusText()})`;
+  };
+  syncQuickGyro();
+
+  quickGyroBtn?.addEventListener('click', () => {
+    const order = ['always', 'ads', 'off'];
+    const curr = settings.gyroMode || (settings.gyroEnabled === false ? 'off' : 'always');
+    const next = order[(order.indexOf(curr) + 1) % order.length];
+    settings.gyroMode = next;
+    settings.gyroEnabled = next !== 'off';
+    saveSettings(settings);
+    syncQuickGyro();
   });
 
   document.getElementById('btn-open-settings').addEventListener('click', () => {
     document.getElementById('hz-info').textContent = `(Detected: ~${engine.detectedHz} Hz)`;
+    if (gyroStatusEl) gyroStatusEl.textContent = `(${input.getGyroStatusText()})`;
     settingsModal.classList.remove('hidden');
   });
   document.getElementById('btn-close-settings').addEventListener('click', () => {
@@ -519,6 +637,20 @@ function bindUI() {
     document.getElementById('menu-cache-badge').textContent = 'Cache cleared';
   });
 
+  document.querySelectorAll('#weapon-selector .weapon-card').forEach((card) => {
+    card.classList.toggle('active', card.dataset.weapon === (settings.preferredWeapon || 'm4'));
+    card.addEventListener('click', () => {
+      settings.preferredWeapon = card.dataset.weapon;
+      saveSettings(settings);
+      document.querySelectorAll('#weapon-selector .weapon-card').forEach((c) =>
+        c.classList.toggle('active', c === card)
+      );
+      if (gameState === 'paused') {
+        weapons.equipById(settings.preferredWeapon, false);
+      }
+    });
+  });
+
   document.querySelectorAll('#difficulty-selector .seg-btn').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.diff === settings.difficulty);
     btn.addEventListener('click', () => {
@@ -531,8 +663,10 @@ function bindUI() {
   });
 
   const setSens = document.getElementById('set-sensitivity');
+  const setAdsSens = document.getElementById('set-ads-sens');
   const setGyroSens = document.getElementById('set-gyro-sens');
-  const setGyroEnabled = document.getElementById('set-gyro-enabled');
+  const setGyroInvertY = document.getElementById('set-gyro-invert-y');
+  const setGyroSwapAxes = document.getElementById('set-gyro-swap-axes');
   const setAdsHold = document.getElementById('set-ads-hold');
   const setRes = document.getElementById('set-res-scale');
   const setQual = document.getElementById('set-quality');
@@ -541,10 +675,14 @@ function bindUI() {
   const setBtnSize = document.getElementById('set-btn-size');
   const setHudOpacity = document.getElementById('set-hud-opacity');
   const setDebug = document.getElementById('set-debug');
+  const btnCalibrateGyro = document.getElementById('btn-calibrate-gyro');
 
   setSens.value = settings.sensitivity;
+  setAdsSens.value = settings.adsSensitivity ?? 0.75;
+  setGyroMode.value = settings.gyroMode || (settings.gyroEnabled === false ? 'off' : 'always');
   setGyroSens.value = settings.gyroSensitivity;
-  setGyroEnabled.checked = settings.gyroEnabled;
+  setGyroInvertY.checked = !!settings.gyroInvertY;
+  setGyroSwapAxes.checked = !!settings.gyroSwapAxes;
   setAdsHold.checked = settings.adsHold !== false;
   setRes.value = settings.resolutionScale;
   setQual.value = settings.quality;
@@ -556,6 +694,7 @@ function bindUI() {
 
   const syncLabels = () => {
     document.getElementById('val-sensitivity').textContent = Number(settings.sensitivity).toFixed(2);
+    document.getElementById('val-ads-sens').textContent = Number(settings.adsSensitivity ?? 0.75).toFixed(2);
     document.getElementById('val-gyro-sens').textContent = Number(settings.gyroSensitivity).toFixed(1);
     document.getElementById('val-res-scale').textContent = Number(settings.resolutionScale).toFixed(2);
     document.getElementById('val-volume').textContent = `${Math.round(settings.volume * 100)}%`;
@@ -566,13 +705,18 @@ function bindUI() {
       cap > engine.detectedHz
         ? `(Display ~${engine.detectedHz} Hz — cap ${cap} unreachable)`
         : `(Display ~${engine.detectedHz} Hz)`;
+    syncQuickGyro();
   };
   syncLabels();
 
   const onChange = () => {
     settings.sensitivity = Number(setSens.value);
+    settings.adsSensitivity = Number(setAdsSens.value);
+    settings.gyroMode = setGyroMode.value;
+    settings.gyroEnabled = settings.gyroMode !== 'off';
     settings.gyroSensitivity = Number(setGyroSens.value);
-    settings.gyroEnabled = setGyroEnabled.checked;
+    settings.gyroInvertY = setGyroInvertY.checked;
+    settings.gyroSwapAxes = setGyroSwapAxes.checked;
     settings.adsHold = setAdsHold.checked;
     settings.resolutionScale = Number(setRes.value);
     settings.quality = setQual.value;
@@ -588,9 +732,30 @@ function bindUI() {
     syncLabels();
   };
 
-  [setSens, setGyroSens, setGyroEnabled, setAdsHold, setRes, setQual, setFps, setVol, setBtnSize, setHudOpacity, setDebug].forEach((el) =>
-    el.addEventListener('input', onChange)
-  );
+  [
+    setSens,
+    setAdsSens,
+    setGyroMode,
+    setGyroSens,
+    setGyroInvertY,
+    setGyroSwapAxes,
+    setAdsHold,
+    setRes,
+    setQual,
+    setFps,
+    setVol,
+    setBtnSize,
+    setHudOpacity,
+    setDebug,
+  ].forEach((el) => el.addEventListener('input', onChange));
+
+  btnCalibrateGyro?.addEventListener('click', () => {
+    input.calibrateGyro(500);
+    if (gyroStatusEl) gyroStatusEl.textContent = '(Calibrating... Hold steady)';
+    setTimeout(() => {
+      if (gyroStatusEl) gyroStatusEl.textContent = `(${input.getGyroStatusText()})`;
+    }, 520);
+  });
 }
 
 async function boot() {
@@ -618,24 +783,22 @@ async function boot() {
   const introL2 = new THREE.Vector3(0.0, 1.81, 20.5);
   const introPos = new THREE.Vector3();
   const introLook = new THREE.Vector3();
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
 
   engine.startLoop(
     (dt) => {
       if (gameState !== 'playing') return;
-      if (hitStopTimer > 0) {
-        hitStopTimer -= dt;
-        return;
-      }
 
       input.pollKeyboardMovement();
       const cmd = input.consumePulses();
 
       player.step(dt, cmd, {
-        onFootstep: (feetPos, sprinting) => {
+        onFootstep: (feetPos, sprinting, crouching) => {
           const key = audio.isIndoors
             ? (Math.random() < 0.5 ? 'step_stone1' : 'step_stone2')
             : (Math.random() < 0.5 ? 'step_sand1' : 'step_sand2');
-          audio.playClip(key, feetPos, sprinting ? 0.50 : 0.38, 0.09);
+          const vol = sprinting ? 0.17 : crouching ? 0.07 : 0.12;
+          audio.playClip(key, feetPos, vol, 0.09);
         },
         onJump: () => audio.playJump(),
         onLand: (_pos, fallSpeed) => audio.playLand(fallSpeed),
@@ -643,65 +806,72 @@ async function boot() {
 
       const healed = village ? village.updateMedkits(dt, player.getFeetPosition(), player) : 0;
       if (healed > 0) {
-        audio.playPickup();
+        audio.playPickup('medkit');
         showPickupToast(`+${healed} HP // MEDKIT`);
       }
       const addedAmmo = village ? village.updateAmmoBoxes(dt, player.getFeetPosition(), weapons) : 0;
       if (addedAmmo > 0) {
-        audio.playPickup();
+        audio.playPickup('ammo');
         showPickupToast(`+${addedAmmo} ROUNDS // AMMO CRATE`);
       }
 
-      doorSystem.step(dt);
+      doorSystem.step(dt, player.getFeetPosition(), enemySys.enemies);
       nearestDoor = doorSystem.findNearestInteractable(player.getFeetPosition());
       if (cmd.interact && nearestDoor) {
         doorSystem.toggle(nearestDoor, (d) => audio.playClip('door_open', d.hingePos, 0.72));
       }
 
       const prevMag = weapons.activeAmmo.mag;
-      const prevWeaponId = weapons.activeDef.id;
       weapons.update(
         dt,
         cmd,
         player,
         (enemy, dmg, hitPt, dir) => {
-          hitStopTimer = 0.036;
-          enemySys.damageEnemy(enemy, dmg, hitPt, dir);
+          const res = enemySys.damageEnemy(enemy, dmg, hitPt, dir);
           if (enemySys.getRemainingCount() === 0) {
             finishMission(true);
           }
+          return res;
         },
         showHitMarker
       );
-      if (weapons.activeDef.id !== prevWeaponId) {
-        audio.playWeaponSwitch();
-      }
       if (weapons.activeAmmo.mag < prevMag) {
         enemySys.notifyGunfire(player.getFeetPosition(), audio.isIndoors);
       }
 
-      enemySys.update(dt, player.getFeetPosition(), onPlayerDamaged);
+      if (player.health > 0 && player.health < 30) {
+        heartbeatAccum += dt;
+        if (heartbeatAccum >= 1.15) {
+          heartbeatAccum = 0;
+          audio.playHeartbeatPulse();
+        }
+      } else {
+        heartbeatAccum = 0;
+      }
+
+      enemySys.update(dt, player.getFeetPosition(), onPlayerDamaged, player.isCrouching);
       effects.update(dt);
+      village?.updateDynamicPropLighting();
       physics.step();
     },
     (alpha, renderDt) => {
       if (hitMarkerTimer > 0) {
         hitMarkerTimer -= renderDt;
-        if (hitMarkerTimer <= 0) document.getElementById('hit-marker').classList.add('hidden');
+        if (hitMarkerTimer <= 0) hudEls.hitMarker?.classList.add('hidden');
       }
       if (damageFlashTimer > 0) {
         damageFlashTimer -= renderDt;
-        if (damageFlashTimer <= 0) {
-          document.getElementById('damage-vignette').style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
+        if (damageFlashTimer <= 0 && hudEls.damageVignette) {
+          hudEls.damageVignette.style.boxShadow = 'inset 0 0 80px rgba(184, 38, 28, 0)';
         }
       }
       if (missionBannerTimer > 0) {
         missionBannerTimer -= renderDt;
-        if (missionBannerTimer <= 0) document.getElementById('mission-banner').classList.add('hidden');
+        if (missionBannerTimer <= 0) hudEls.missionBanner?.classList.add('hidden');
       }
       if (medkitToastTimer > 0) {
         medkitToastTimer -= renderDt;
-        if (medkitToastTimer <= 0) document.getElementById('medkit-toast').classList.add('hidden');
+        if (medkitToastTimer <= 0) hudEls.medkitToast?.classList.add('hidden');
       }
 
       weapons.setVisible(gameState === 'playing');
@@ -723,15 +893,15 @@ async function boot() {
         engine.camera.position.copy(introPos);
         engine.camera.lookAt(introLook);
         engine.updateShadowFocus(introLook);
-        if (village) engine.enforceTriangleBudget([...village.lodObjects, ...enemySys.lodObjects]);
+        if (allLodObjects.length) engine.enforceTriangleBudget(allLodObjects);
 
         if (u >= 1) {
           document.getElementById('intro-overlay').classList.add('hidden');
           input.clearActiveInputs();
-          document.getElementById('hud').classList.remove('hidden');
-          document.getElementById('touch-controls').classList.remove('hidden');
+          hudEls.hud?.classList.remove('hidden');
+          hudEls.touchControls?.classList.remove('hidden');
           document.getElementById('btn-restart-menu').classList.remove('hidden');
-          gameState = 'playing';
+          setGameState('playing');
           weapons.drawTimer = 0.35;
           weapons.setVisible(true);
           showMissionBanner();
@@ -740,6 +910,7 @@ async function boot() {
       }
 
       if (gameState === 'playing') {
+        input.setCurrentFov(engine.camera.fov);
         // Apply touch & gyro camera rotation smoothly every render frame!
         const look = input.consumeLook();
         player.yaw -= look.dx;
@@ -747,54 +918,141 @@ async function boot() {
 
         physics.interpolate(alpha);
         player.applyCamera(alpha);
+        if (village?.probeGrid?.data) {
+          village.probeGrid.sample(player.currPos.x, player.currPos.y, player.currPos.z, _playerProbeTint, 0.50);
+        } else {
+          _playerProbeTint.set(1, 1, 1);
+        }
+        weapons.updateLighting(_playerProbeTint, effects.muzzleIntensity);
         engine.updateShadowFocus(player.currPos);
-        if (village) engine.enforceTriangleBudget([...village.lodObjects, ...enemySys.lodObjects]);
+        if (allLodObjects.length) engine.enforceTriangleBudget(allLodObjects);
 
         updateDynamicDamageIndicators(renderDt);
-        updateCompassThreats();
-        drawTacticalRadar();
-
-        const fwd = player.getAimDirection();
-        audio.updateListener(engine.camera.position, fwd, new THREE.Vector3(0, 1, 0));
-
-        // Dynamic Crosshair (expands gently on sprint/recoil, fades during ADS for clean reticle view)
-        const crosshairEl = document.getElementById('crosshair');
-        if (crosshairEl) {
-          const moveMag = Math.min(1, Math.hypot(input.state.moveX, input.state.moveY));
-          const chScale = 1 + moveMag * (player.isSprinting ? 0.55 : 0.24) + Math.min(0.65, Math.abs(weapons.recoilPitch) * 10);
-          crosshairEl.style.opacity = String(Math.max(0.06, 1 - weapons.adsBlend * 0.94).toFixed(2));
-          crosshairEl.style.transform = `translate(-50%, -50%) scale(${chScale.toFixed(2)})`;
+        radarAccum += renderDt;
+        if (radarAccum >= 0.066) {
+          radarAccum = 0;
+          updateCompassThreats();
+          drawTacticalRadar();
         }
 
-        // Telemetry & Debug
-        document.getElementById('fps-counter').textContent = `FPS: ${engine.fps} | Hz: ${engine.detectedHz}`;
-        const debugEl = document.getElementById('debug-tris');
-        debugEl.classList.toggle('hidden', !settings.showDebug);
-        const triCapK = ((QUALITY_PRESETS[settings.quality]?.triTarget || MAX_TRIANGLES) / 1000).toFixed(0);
-        debugEl.textContent = `TRIS: ${(engine.triangles / 1000).toFixed(1)}k/${triCapK}k | CALLS: ${engine.drawCalls}`;
+        const fwd = player.getAimDirection();
+        audio.updateListener(engine.camera.position, fwd, _upVec);
+
+        // Dynamic Crosshair (expands crosshair lines cleanly via --ch-gap without blurring center dot)
+        if (hudEls.crosshair) {
+          const moveMag = Math.min(1, Math.hypot(input.state.moveX, input.state.moveY));
+          const spreadKick =
+            moveMag * (player.isSprinting ? 7.5 : 3.2) +
+            Math.min(8.0, Math.abs(weapons.recoilPitch) * 120) -
+            (player.isCrouching ? 1.2 : 0);
+          const chGap = `${Math.max(2.5, 4.5 + spreadKick).toFixed(1)}px`;
+          const chOpacity = String(Math.max(0.06, 1 - weapons.adsBlend * 0.94).toFixed(2));
+          if (hudPrev.chGap !== chGap) {
+            hudPrev.chGap = chGap;
+            hudEls.crosshair.style.setProperty('--ch-gap', chGap);
+          }
+          if (hudPrev.chOpacity !== chOpacity) {
+            hudPrev.chOpacity = chOpacity;
+            hudEls.crosshair.style.opacity = chOpacity;
+          }
+        }
+
+        // Reload Progress Pill
+        if (weapons.isReloading) {
+          if (!hudPrev.reloadVisible) {
+            hudPrev.reloadVisible = true;
+            hudEls.reloadPill?.classList.remove('hidden');
+          }
+          const pct = `${Math.round(
+            THREE.MathUtils.clamp((1 - weapons.reloadTimer / weapons.activeDef.reloadTime) * 100, 0, 100)
+          )}%`;
+          if (hudPrev.reloadPct !== pct && hudEls.reloadFill) {
+            hudPrev.reloadPct = pct;
+            hudEls.reloadFill.style.width = pct;
+          }
+        } else if (hudPrev.reloadVisible) {
+          hudPrev.reloadVisible = false;
+          hudEls.reloadPill?.classList.add('hidden');
+        }
+
+        // Telemetry & Debug (dirty-checked)
+        const fpsText = `FPS: ${engine.fps} | Hz: ${engine.detectedHz}`;
+        if (hudPrev.fpsText !== fpsText && hudEls.fpsCounter) {
+          hudPrev.fpsText = fpsText;
+          hudEls.fpsCounter.textContent = fpsText;
+        }
+        const debugHidden = !settings.showDebug;
+        if (hudPrev.debugHidden !== debugHidden && hudEls.debugTris) {
+          hudPrev.debugHidden = debugHidden;
+          hudEls.debugTris.classList.toggle('hidden', debugHidden);
+        }
+        if (!debugHidden && hudEls.debugTris) {
+          const triCapK = ((QUALITY_PRESETS[settings.quality]?.triTarget || MAX_TRIANGLES) / 1000).toFixed(0);
+          const debugText = `TRIS: ${(engine.triangles / 1000).toFixed(1)}k/${triCapK}k | CALLS: ${engine.drawCalls}`;
+          if (hudPrev.debugText !== debugText) {
+            hudPrev.debugText = debugText;
+            hudEls.debugTris.textContent = debugText;
+          }
+        }
 
         // Compass & Zone
         const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);
-        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-        document.getElementById('compass-dir').textContent = `${dirs[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
+        const compassText = `${dirs[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
+        if (hudPrev.compassText !== compassText && hudEls.compassDir) {
+          hudPrev.compassText = compassText;
+          hudEls.compassDir.textContent = compassText;
+        }
         const feetY = player.getFeetPosition().y;
         const floorNum = Math.max(1, Math.min(6, Math.floor((feetY + 0.5) / 3.1) + 1));
-        document.getElementById('zone-indicator').textContent = audio.isIndoors
+        const zoneText = audio.isIndoors
           ? (floorNum > 5 ? 'ROOFTOP' : `INDOORS · F${floorNum}`)
           : 'OUTDOORS';
+        if (hudPrev.zoneText !== zoneText && hudEls.zoneIndicator) {
+          hudPrev.zoneText = zoneText;
+          hudEls.zoneIndicator.textContent = zoneText;
+        }
 
         // Objective & Combat HUD
-        document.getElementById('objective-count').textContent = `${enemySys.getRemainingCount()} / ${totalEnemies}`;
-        document.getElementById('weapon-name').textContent = weapons.isReloading
+        const objText = `${enemySys.getRemainingCount()} / ${totalEnemies}`;
+        if (hudPrev.objText !== objText && hudEls.objectiveCount) {
+          hudPrev.objText = objText;
+          hudEls.objectiveCount.textContent = objText;
+        }
+        const weaponText = weapons.isReloading
           ? `${weapons.activeDef.name} (RELOAD)`
           : weapons.activeDef.name;
-        document.getElementById('ammo-mag').textContent = String(weapons.activeAmmo.mag);
-        document.getElementById('ammo-reserve').textContent = String(weapons.activeAmmo.reserve);
-        document.getElementById('hp-value').textContent = String(Math.max(0, Math.round(player.health)));
-        document.getElementById('hp-bar-fill').style.width = `${Math.max(0, (player.health / player.maxHealth) * 100)}%`;
+        if (hudPrev.weaponText !== weaponText && hudEls.weaponName) {
+          hudPrev.weaponText = weaponText;
+          hudEls.weaponName.textContent = weaponText;
+        }
+        const magText = String(weapons.activeAmmo.mag);
+        if (hudPrev.magText !== magText && hudEls.ammoMag) {
+          hudPrev.magText = magText;
+          hudEls.ammoMag.textContent = magText;
+        }
+        const reserveText = String(weapons.activeAmmo.reserve);
+        if (hudPrev.reserveText !== reserveText && hudEls.ammoReserve) {
+          hudPrev.reserveText = reserveText;
+          hudEls.ammoReserve.textContent = reserveText;
+        }
+        const hpVal = Math.max(0, Math.round(player.health));
+        const hpText = String(hpVal);
+        if (hudPrev.hpText !== hpText && hudEls.hpValue) {
+          hudPrev.hpText = hpText;
+          hudEls.hpValue.textContent = hpText;
+        }
+        const hpWidth = `${Math.max(0, (player.health / player.maxHealth) * 100).toFixed(1)}%`;
+        if (hudPrev.hpWidth !== hpWidth && hudEls.hpBarFill) {
+          hudPrev.hpWidth = hpWidth;
+          hudEls.hpBarFill.style.width = hpWidth;
+        }
 
-        document.getElementById('btn-door').classList.toggle('hidden', !nearestDoor);
-        document.getElementById('interact-prompt').classList.toggle('hidden', !nearestDoor);
+        const hasDoor = !!nearestDoor;
+        if (hudPrev.doorVisible !== hasDoor) {
+          hudPrev.doorVisible = hasDoor;
+          hudEls.btnDoor?.classList.toggle('hidden', !hasDoor);
+          hudEls.interactPrompt?.classList.toggle('hidden', !hasDoor);
+        }
       } else {
         menuOrbitAngle += renderDt * 0.08;
         engine.camera.position.set(Math.sin(menuOrbitAngle) * 14, 7.2, 12 + Math.cos(menuOrbitAngle) * 10);
