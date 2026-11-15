@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-15T13:54:43.481Z",
-  "totalBytes": 4668202,
+  "generatedAt": "2026-11-15T14:28:39.614Z",
+  "totalBytes": 4669577,
   "fileCount": 88,
   "categories": {
-    "code": 443017,
+    "code": 444392,
     "models": 3390120,
     "textures": 665512,
     "audio": 169553
@@ -57,7 +57,7 @@
     },
     {
       "path": "src/main.js",
-      "size": 46115,
+      "size": 46145,
       "category": "code"
     },
     {
@@ -72,7 +72,7 @@
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 40051,
+      "size": 41396,
       "category": "code"
     },
     {

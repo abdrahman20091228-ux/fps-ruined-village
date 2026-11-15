@@ -1106,10 +1106,11 @@ async function boot() {
           hudPrev.objText = objText;
           hudEls.objectiveCount.textContent = objText;
         }
-        if (hudPrev.weaponId !== weapons.activeId && hudEls.weaponSvg) {
-          hudPrev.weaponId = weapons.activeId;
-          if (WEAPON_SVGS[weapons.activeId]) {
-            hudEls.weaponSvg.innerHTML = WEAPON_SVGS[weapons.activeId];
+        const curWeaponId = weapons.activeDef.id;
+        if (hudPrev.weaponId !== curWeaponId && hudEls.weaponSvg) {
+          hudPrev.weaponId = curWeaponId;
+          if (WEAPON_SVGS[curWeaponId]) {
+            hudEls.weaponSvg.innerHTML = WEAPON_SVGS[curWeaponId];
           }
         }
         const weaponText = weapons.isReloading

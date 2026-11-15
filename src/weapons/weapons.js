@@ -49,7 +49,7 @@ export const WEAPON_DEFS = {
       { p: 0.033, y: 0.009 },
     ],
     hipPos: new THREE.Vector3(0.165, -0.102, -0.335),
-    adsPos: new THREE.Vector3(0.0, -0.0745, -0.220),
+    adsPos: new THREE.Vector3(0.0, -0.0796, -0.268),
     hipYaw: 0.052,
     muzzleLocal: new THREE.Vector3(0, 0.018, -0.42),
     ejectLocal: new THREE.Vector3(0.03, 0.04, -0.02),
@@ -196,10 +196,10 @@ function recolorAkmTexture(srcTex) {
         d[i + 2] = Math.min(255, Math.max(6, Math.round(28 * shade)));
       } else {
         const mx = Math.max(r, g, b);
-        if (mx < 30) {
-          d[i] = Math.min(255, r + 15);
-          d[i + 1] = Math.min(255, g + 17);
-          d[i + 2] = Math.min(255, b + 20);
+        if (mx < 38) {
+          d[i] = Math.min(255, r + 30);
+          d[i + 1] = Math.min(255, g + 33);
+          d[i + 2] = Math.min(255, b + 38);
         } else if (mx > 135) {
           d[i] = Math.round(r * 0.80);
           d[i + 1] = Math.round(g * 0.81);
@@ -644,6 +644,10 @@ export class WeaponSystem {
     this.viewmodelRoot.visible = !!visible;
   }
 
+  get activeId() {
+    return ORDER[this.currentIndex];
+  }
+
   get activeDef() {
     return WEAPON_DEFS[ORDER[this.currentIndex]];
   }
@@ -815,17 +819,44 @@ export class WeaponSystem {
     } else if (id === 'akm') {
       cloned.scale.setScalar(0.94);
       cloned.position.set(0, 0, 0);
-      const frontGlow = new THREE.Mesh(
-        new THREE.BoxGeometry(0.0020, 0.0048, 0.003),
-        new THREE.MeshBasicMaterial({ color: 0x7bff85 })
-      );
-      frontGlow.position.set(0, 0.0755, -0.375);
-      const rearMat = new THREE.MeshBasicMaterial({ color: 0x45d85a });
-      const rL = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.0032, 0.002), rearMat);
-      rL.position.set(-0.0045, 0.073, -0.075);
+      const sightSteel = createBakedLitBasicMaterial({
+        color: 0x5c6470,
+        map: this._texLib.gunmetal || null,
+        baseFloor: 0.62,
+        hemiWeight: 0.28,
+        sunWeight: 0.46,
+        specBoost: 0.28,
+      });
+      // Winged steel rear tangent U-notch ears framing open sight picture above dust cover
+      const rearBase = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.0028, 0.012), sightSteel);
+      rearBase.position.set(0, 0.0752, -0.075);
+      const earGeo = new THREE.BoxGeometry(0.0034, 0.0058, 0.006);
+      const earL = new THREE.Mesh(earGeo, sightSteel);
+      earL.position.set(-0.0052, 0.0790, -0.075);
+      const earR = earL.clone();
+      earR.position.x = 0.0052;
+
+      const rearMat = new THREE.MeshBasicMaterial({ color: 0x58e66e });
+      const dotGeo = new THREE.BoxGeometry(0.0016, 0.0022, 0.0015);
+      const rL = new THREE.Mesh(dotGeo, rearMat);
+      rL.position.set(-0.0052, 0.0798, -0.0718);
       const rR = rL.clone();
-      rR.position.x = 0.0045;
-      wrapper.add(frontGlow, rL, rR);
+      rR.position.x = 0.0052;
+
+      // Front protective steel wings + sharp glowing tritium front post centered in U-notch
+      const fWingGeo = new THREE.BoxGeometry(0.0014, 0.0066, 0.0055);
+      const fWingL = new THREE.Mesh(fWingGeo, sightSteel);
+      fWingL.position.set(-0.0044, 0.0792, -0.375);
+      const fWingR = fWingL.clone();
+      fWingR.position.x = 0.0044;
+      const frontPost = new THREE.Mesh(new THREE.BoxGeometry(0.0016, 0.0052, 0.003), sightSteel);
+      frontPost.position.set(0, 0.0782, -0.375);
+      const frontGlow = new THREE.Mesh(
+        new THREE.BoxGeometry(0.0017, 0.0024, 0.0025),
+        new THREE.MeshBasicMaterial({ color: 0x84ff8e })
+      );
+      frontGlow.position.set(0, 0.0802, -0.374);
+      wrapper.add(rearBase, earL, earR, rL, rR, fWingL, fWingR, frontPost, frontGlow);
     } else if (id === 'pistol') {
       cloned.scale.setScalar(1.32);
       cloned.position.set(0, 0, 0);
