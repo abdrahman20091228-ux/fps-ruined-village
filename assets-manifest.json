@@ -1,23 +1,23 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-15T11:38:30.679Z",
-  "totalBytes": 5078942,
-  "fileCount": 78,
+  "generatedAt": "2026-11-15T12:52:04.879Z",
+  "totalBytes": 5125716,
+  "fileCount": 81,
   "categories": {
-    "code": 424718,
+    "code": 426269,
     "models": 3390120,
-    "textures": 1106578,
-    "audio": 157526
+    "textures": 1139774,
+    "audio": 169553
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 36375,
+      "size": 38209,
       "category": "code"
     },
     {
       "path": "src/audio/audioSystem.js",
-      "size": 17177,
+      "size": 17745,
       "category": "code"
     },
     {
@@ -27,17 +27,17 @@
     },
     {
       "path": "src/core/config.js",
-      "size": 2393,
+      "size": 2415,
       "category": "code"
     },
     {
       "path": "src/core/engine.js",
-      "size": 8281,
+      "size": 8668,
       "category": "code"
     },
     {
       "path": "src/core/lightProbes.js",
-      "size": 6171,
+      "size": 6365,
       "category": "code"
     },
     {
@@ -52,12 +52,12 @@
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 40423,
+      "size": 40658,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 41349,
+      "size": 44620,
       "category": "code"
     },
     {
@@ -67,12 +67,12 @@
     },
     {
       "path": "src/styles.css",
-      "size": 27187,
+      "size": 30789,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 26872,
+      "size": 29440,
       "category": "code"
     },
     {
@@ -82,12 +82,12 @@
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 73621,
+      "size": 81780,
       "category": "code"
     },
     {
       "path": "assets/audio/akm_fire.ogg",
-      "size": 8285,
+      "size": 9968,
       "category": "audio"
     },
     {
@@ -112,7 +112,7 @@
     },
     {
       "path": "assets/audio/impact_metal.ogg",
-      "size": 4803,
+      "size": 8834,
       "category": "audio"
     },
     {
@@ -122,22 +122,22 @@
     },
     {
       "path": "assets/audio/jump.ogg",
-      "size": 6788,
+      "size": 7413,
       "category": "audio"
     },
     {
       "path": "assets/audio/land.ogg",
-      "size": 4229,
+      "size": 6984,
       "category": "audio"
     },
     {
       "path": "assets/audio/m4_fire.ogg",
-      "size": 7996,
+      "size": 9424,
       "category": "audio"
     },
     {
       "path": "assets/audio/pistol_fire.ogg",
-      "size": 8068,
+      "size": 8496,
       "category": "audio"
     },
     {
@@ -147,7 +147,7 @@
     },
     {
       "path": "assets/audio/reload.ogg",
-      "size": 12218,
+      "size": 13295,
       "category": "audio"
     },
     {
@@ -187,7 +187,7 @@
     },
     {
       "path": "assets/baked/world_vertex_gi.bin",
-      "size": 98154,
+      "size": 78865,
       "category": "code"
     },
     {
@@ -371,8 +371,13 @@
       "category": "textures"
     },
     {
+      "path": "assets/textures/leaf_cluster.webp",
+      "size": 7068,
+      "category": "textures"
+    },
+    {
       "path": "assets/textures/lightmap_ground.webp",
-      "size": 19800,
+      "size": 32570,
       "category": "textures"
     },
     {
@@ -393,6 +398,16 @@
     {
       "path": "assets/textures/shadow_blob.webp",
       "size": 894,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/sky_dusk.webp",
+      "size": 9746,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/smoke_puff.webp",
+      "size": 3612,
       "category": "textures"
     },
     {

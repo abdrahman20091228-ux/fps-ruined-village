@@ -17,8 +17,8 @@ from PIL import Image
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 
-# Sun direction matching src/core/lightProbes.js: normalize(22, 32, 14)
-SUN_DIR = np.array([22.0, 32.0, 14.0], dtype=np.float32)
+# Sun direction matching src/core/lightProbes.js: normalize(22, 13, 24)
+SUN_DIR = np.array([22.0, 13.0, 24.0], dtype=np.float32)
 SUN_DIR /= np.linalg.norm(SUN_DIR)
 
 # Orthonormal basis around SUN_DIR for soft penumbra sampling
@@ -305,11 +305,11 @@ def bake_ground_lightmap(occ):
                 sky_vis /= float(len(sky_up_dirs))
                 ao_accum /= float(len(sky_up_dirs))
 
-            # Compose physical sunlit + overcast sky + crevice AO balance
-            direct_sun = (sun_vis * SUN_DIR[1])[:, None] * np.array([0.82, 0.78, 0.69], dtype=np.float32)
-            sky_fill = (0.16 + 0.34 * sky_vis)[:, None] * np.array([0.86, 0.94, 1.04], dtype=np.float32)
-            ao_factor = (0.72 + 0.28 * ao_accum)[:, None]
-            col = np.clip((direct_sun + sky_fill) * ao_factor, 0.14, 1.08)
+            # Compose physical golden-hour sunlit + cool slate sky + crevice AO balance
+            direct_sun = (sun_vis * 0.74)[:, None] * np.array([1.14, 0.88, 0.58], dtype=np.float32)
+            sky_fill = (0.18 + 0.36 * sky_vis)[:, None] * np.array([0.66, 0.78, 0.98], dtype=np.float32)
+            ao_factor = (0.70 + 0.30 * ao_accum)[:, None]
+            col = np.clip((direct_sun + sky_fill) * ao_factor, 0.14, 1.12)
             lm_lin[ty:ty + tile, tx:tx + tile] = col.reshape(tile, tile, 3)
 
     lm_u8 = linear_to_srgb_u8(lm_lin)
@@ -403,13 +403,13 @@ def bake_vertex_gi(meshes, occ):
             bounce_col *= inv_h
 
             h_up = bn[:, 1] * 0.5 + 0.5
-            direct = (ndl * sun_vis)[:, None] * np.array([0.84, 0.80, 0.72], dtype=np.float32)
-            sky_term = (0.14 + 0.42 * sky_vis * (0.65 + 0.35 * h_up))[:, None] * np.array([0.88, 0.94, 1.03], dtype=np.float32)
-            bounce_term = bounce_col * 0.22 + np.array([0.16, 0.17, 0.18], dtype=np.float32)
-            ao_factor = (0.72 + 0.28 * ao_acc)[:, None]
+            direct = (ndl * sun_vis)[:, None] * np.array([1.12, 0.87, 0.58], dtype=np.float32)
+            sky_term = (0.16 + 0.40 * sky_vis * (0.65 + 0.35 * h_up))[:, None] * np.array([0.66, 0.78, 0.98], dtype=np.float32)
+            bounce_term = bounce_col * 0.24 + np.array([0.14, 0.14, 0.15], dtype=np.float32)
+            ao_factor = (0.70 + 0.30 * ao_acc)[:, None]
 
             col = (direct + sky_term + bounce_term) * ao_factor
-            rgb[b0:b1] = np.clip(col, 0.24, 1.0)
+            rgb[b0:b1] = np.clip(col, 0.22, 1.0)
 
         out_slices.append(np.clip(np.round(rgb * 255.0), 0, 255).astype(np.uint8))
 
@@ -454,14 +454,14 @@ def bake_light_probes(occ):
         sky_vis += tr
     sky_vis /= 9.0
 
-    # Construct probe tint: sunlit outdoor ~ (1.0, 0.99, 0.97), shaded outdoor ~ (0.76, 0.80, 0.86), indoor ~ (0.50..0.68)
+    # Construct probe tint: sunlit outdoor ~ warm gold (1.0, 0.94, 0.84), shaded outdoor ~ cool twilight (0.76, 0.84, 0.96)
     sun_w = sun_vis[:, None]
     sky_w = sky_vis[:, None]
-    outdoor_tint = sun_w * np.array([1.0, 0.99, 0.96], dtype=np.float32) + (1.0 - sun_w) * (
-        0.52 + 0.34 * sky_w
-    ) * np.array([0.92, 0.96, 1.03], dtype=np.float32)
+    outdoor_tint = sun_w * np.array([1.0, 0.94, 0.84], dtype=np.float32) + (1.0 - sun_w) * (
+        0.50 + 0.34 * sky_w
+    ) * np.array([0.78, 0.86, 0.98], dtype=np.float32)
 
-    tint = np.clip(outdoor_tint, 0.46, 1.0)
+    tint = np.clip(outdoor_tint, 0.44, 1.0)
     out_rgba = np.zeros((n_probes, 4), dtype=np.uint8)
     out_rgba[:, 0:3] = np.clip(np.round(tint * 255.0), 0, 255).astype(np.uint8)
     out_rgba[:, 3] = np.clip(np.round(sun_vis * 255.0), 0, 255).astype(np.uint8)

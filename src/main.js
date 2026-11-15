@@ -62,10 +62,13 @@ const hudEls = {
   fpsCounter: document.getElementById('fps-counter'),
   debugTris: document.getElementById('debug-tris'),
   compassDir: document.getElementById('compass-dir'),
+  compassTrack: document.getElementById('compass-track'),
   compassThreats: document.getElementById('compass-threats'),
+  radarNPip: document.querySelector('#radar-shell .radar-n-pip'),
   zoneIndicator: document.getElementById('zone-indicator'),
   objectiveCount: document.getElementById('objective-count'),
   weaponName: document.getElementById('weapon-name'),
+  weaponSvg: document.getElementById('weapon-svg'),
   ammoMag: document.getElementById('ammo-mag'),
   ammoReserve: document.getElementById('ammo-reserve'),
   hpValue: document.getElementById('hp-value'),
@@ -74,18 +77,44 @@ const hudEls = {
   interactPrompt: document.getElementById('interact-prompt'),
 };
 
+const COMPASS_PX_PER_DEG = 2.2;
+const WEAPON_SVGS = {
+  m4: '<path d="M3 7.5h25l2 1.5h13v2h-11l-2.5 1.2H25l-1 4.3h-3.2L21.5 12h-5.2L14 15.8h-2.8l1.2-3.8H6L3 13.5v-6z" fill="currentColor" opacity="0.92"/><rect x="15" y="4.2" width="7" height="2.4" rx="0.6" fill="#e5b34b"/>',
+  akm: '<path d="M3 8.2h9l3-1.4h14l2.5 1.6h11.5v1.8h-11l-2 1.1H24l1.8 5.2-3.4.5-2.1-5.1h-5.6L12 15.5H9.2l1.1-3.8H6.2L3 14V8.2z" fill="currentColor" opacity="0.92"/><rect x="14" y="6.8" width="9" height="1.6" rx="0.4" fill="#c97a3a"/>',
+  pistol: '<path d="M11 6h18v3.6h-5.2l-1.2 1.6h-3.2l-2.4 5.8h-4.6l2-6.2H11V6z" fill="currentColor" opacity="0.94"/><rect x="12" y="5.1" width="3.5" height="1.2" fill="#e5b34b"/>',
+};
+
+function initCompassRibbon() {
+  const track = hudEls.compassTrack;
+  if (!track || track.children.length > 0) return;
+  const labels = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' };
+  for (let deg = -135; deg <= 495; deg += 15) {
+    const norm = ((deg % 360) + 360) % 360;
+    const tick = document.createElement('span');
+    const card = labels[norm];
+    tick.className = card ? 'c-tick c-cardinal' : 'c-tick';
+    tick.textContent = card || String(norm);
+    tick.style.left = `${(deg * COMPASS_PX_PER_DEG).toFixed(1)}px`;
+    track.appendChild(tick);
+  }
+}
+
 const hudPrev = {
   fpsText: '',
   debugText: '',
   debugHidden: null,
   compassText: '',
+  compassTrackX: '',
+  radarRotDeg: '',
   zoneText: '',
   objText: '',
   weaponText: '',
+  weaponId: 'm4',
   magText: '',
   reserveText: '',
   hpText: '',
   hpWidth: '',
+  hpTier: 'ok',
   reloadVisible: false,
   reloadPct: '',
   doorVisible: null,
@@ -427,6 +456,7 @@ async function buildWorld() {
   if (!worldBuilt) {
     village = new VillageBuilder(engine.scene, physics, doorSystem, assets);
     await village.build();
+    if (village.skyTexture) engine.setSkyTexture(village.skyTexture);
     audio.setIndoorZones(village.indoorZones);
     enemySys.setProbeGrid(village.probeGrid);
 
@@ -662,9 +692,12 @@ function bindUI() {
     });
   });
 
+  initCompassRibbon();
+
   const setSens = document.getElementById('set-sensitivity');
   const setAdsSens = document.getElementById('set-ads-sens');
   const setGyroSens = document.getElementById('set-gyro-sens');
+  const setGyroInvertX = document.getElementById('set-gyro-invert-x');
   const setGyroInvertY = document.getElementById('set-gyro-invert-y');
   const setGyroSwapAxes = document.getElementById('set-gyro-swap-axes');
   const setAdsHold = document.getElementById('set-ads-hold');
@@ -681,6 +714,7 @@ function bindUI() {
   setAdsSens.value = settings.adsSensitivity ?? 0.75;
   setGyroMode.value = settings.gyroMode || (settings.gyroEnabled === false ? 'off' : 'always');
   setGyroSens.value = settings.gyroSensitivity;
+  if (setGyroInvertX) setGyroInvertX.checked = !!settings.gyroInvertX;
   setGyroInvertY.checked = !!settings.gyroInvertY;
   setGyroSwapAxes.checked = !!settings.gyroSwapAxes;
   setAdsHold.checked = settings.adsHold !== false;
@@ -715,6 +749,7 @@ function bindUI() {
     settings.gyroMode = setGyroMode.value;
     settings.gyroEnabled = settings.gyroMode !== 'off';
     settings.gyroSensitivity = Number(setGyroSens.value);
+    if (setGyroInvertX) settings.gyroInvertX = setGyroInvertX.checked;
     settings.gyroInvertY = setGyroInvertY.checked;
     settings.gyroSwapAxes = setGyroSwapAxes.checked;
     settings.adsHold = setAdsHold.checked;
@@ -737,6 +772,7 @@ function bindUI() {
     setAdsSens,
     setGyroMode,
     setGyroSens,
+    setGyroInvertX,
     setGyroInvertY,
     setGyroSwapAxes,
     setAdsHold,
@@ -747,7 +783,7 @@ function bindUI() {
     setBtnSize,
     setHudOpacity,
     setDebug,
-  ].forEach((el) => el.addEventListener('input', onChange));
+  ].filter(Boolean).forEach((el) => el.addEventListener('input', onChange));
 
   btnCalibrateGyro?.addEventListener('click', () => {
     input.calibrateGyro(500);
@@ -893,6 +929,7 @@ async function boot() {
         engine.camera.position.copy(introPos);
         engine.camera.lookAt(introLook);
         engine.updateShadowFocus(introLook);
+        village?.updateAtmosphere(renderDt, engine.camera);
         if (allLodObjects.length) engine.enforceTriangleBudget(allLodObjects);
 
         if (u >= 1) {
@@ -925,6 +962,7 @@ async function boot() {
         }
         weapons.updateLighting(_playerProbeTint, effects.muzzleIntensity);
         engine.updateShadowFocus(player.currPos);
+        village?.updateAtmosphere(renderDt, engine.camera);
         if (allLodObjects.length) engine.enforceTriangleBudget(allLodObjects);
 
         updateDynamicDamageIndicators(renderDt);
@@ -995,8 +1033,19 @@ async function boot() {
           }
         }
 
-        // Compass & Zone
-        const deg = Math.round((((-player.yaw * 180) / Math.PI) % 360 + 360) % 360);
+        // Compass Ribbon, Radar North Pip & Zone
+        const exactDeg = (((-player.yaw * 180) / Math.PI) % 360 + 360) % 360;
+        const trackX = `${(-exactDeg * COMPASS_PX_PER_DEG).toFixed(1)}px`;
+        if (hudPrev.compassTrackX !== trackX && hudEls.compassTrack) {
+          hudPrev.compassTrackX = trackX;
+          hudEls.compassTrack.style.transform = `translateX(${trackX})`;
+        }
+        const radarRotDeg = `${Math.round((player.yaw * 180) / Math.PI)}deg`;
+        if (hudPrev.radarRotDeg !== radarRotDeg && hudEls.radarNPip) {
+          hudPrev.radarRotDeg = radarRotDeg;
+          hudEls.radarNPip.style.setProperty('--n-rot', radarRotDeg);
+        }
+        const deg = Math.round(exactDeg) % 360;
         const compassText = `${dirs[Math.round(deg / 45) % 8]} ${String(deg).padStart(3, '0')}°`;
         if (hudPrev.compassText !== compassText && hudEls.compassDir) {
           hudPrev.compassText = compassText;
@@ -1017,6 +1066,12 @@ async function boot() {
         if (hudPrev.objText !== objText && hudEls.objectiveCount) {
           hudPrev.objText = objText;
           hudEls.objectiveCount.textContent = objText;
+        }
+        if (hudPrev.weaponId !== weapons.activeId && hudEls.weaponSvg) {
+          hudPrev.weaponId = weapons.activeId;
+          if (WEAPON_SVGS[weapons.activeId]) {
+            hudEls.weaponSvg.innerHTML = WEAPON_SVGS[weapons.activeId];
+          }
         }
         const weaponText = weapons.isReloading
           ? `${weapons.activeDef.name} (RELOAD)`
@@ -1046,6 +1101,12 @@ async function boot() {
           hudPrev.hpWidth = hpWidth;
           hudEls.hpBarFill.style.width = hpWidth;
         }
+        const hpTier = hpVal <= 25 ? 'crit' : hpVal <= 55 ? 'warn' : 'ok';
+        if (hudPrev.hpTier !== hpTier && hudEls.hpBarFill) {
+          hudPrev.hpTier = hpTier;
+          hudEls.hpBarFill.classList.toggle('is-warn', hpTier === 'warn');
+          hudEls.hpBarFill.classList.toggle('is-crit', hpTier === 'crit');
+        }
 
         const hasDoor = !!nearestDoor;
         if (hudPrev.doorVisible !== hasDoor) {
@@ -1057,6 +1118,7 @@ async function boot() {
         menuOrbitAngle += renderDt * 0.08;
         engine.camera.position.set(Math.sin(menuOrbitAngle) * 14, 7.2, 12 + Math.cos(menuOrbitAngle) * 10);
         engine.camera.lookAt(0, 3.4, -14);
+        village?.updateAtmosphere(renderDt, engine.camera);
       }
     }
   );

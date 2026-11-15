@@ -423,8 +423,8 @@ export class EnemySystem {
     const lod = new THREE.LOD();
     lod.position.set(pos.x, pos.y, pos.z);
     lod.addLevel(m0, 0);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 48);
-    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 80);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 34);
+    lod.addLevel(createLowPolySilhouette(cfg.colorHex), 72);
     this.scene.add(lod);
     this.lodObjects.push(lod);
 
@@ -662,8 +662,28 @@ export class EnemySystem {
     return !!hit;
   }
 
+  _castMoveObstacleRay(e, dirX, dirZ, dist) {
+    const dir = { x: dirX, y: 0, z: dirZ };
+    const hitMid = this.physics.castRay({ x: e.pos.x, y: e.pos.y + 0.95, z: e.pos.z }, dir, dist, e.collider);
+    if (hitMid?.meta?.kind === 'door' && hitMid.meta.ref && !hitMid.meta.ref.isOpen) {
+      hitMid.meta.ref.isOpen = true;
+      hitMid.meta.ref.targetAngle = (hitMid.meta.ref.openDir || 1) * Math.PI * 0.52;
+      return null;
+    }
+    const isSolid = (h) =>
+      h && h.meta?.kind !== 'enemy' && h.meta?.kind !== 'player' && h.meta?.kind !== 'stairs' && h.meta?.kind !== 'door';
+    if (isSolid(hitMid)) return hitMid;
+    const hitLow = this.physics.castRay({ x: e.pos.x, y: e.pos.y + 0.45, z: e.pos.z }, dir, dist, e.collider);
+    return isSolid(hitLow) ? hitLow : null;
+  }
+
+  _hasMoveClearance(e, dirX, dirZ, dist = 1.25) {
+    return !this._castMoveObstacleRay(e, dirX, dirZ, dist);
+  }
+
   _moveWithPhysics(e, wishVx, wishVz, dt, distToPlayer = 99) {
     if (!e.collider || !e.charCtrl) return;
+    dt = Math.min(dt, 0.055);
 
     let sepX = 0;
     let sepZ = 0;
@@ -692,26 +712,36 @@ export class EnemySystem {
       horizMag = 0;
     }
 
-    if (horizMag > 0.4) {
+    if (horizMag > 0.35) {
       const fx = vx / horizMag;
       const fz = vz / horizMag;
-      const origin = { x: e.pos.x, y: e.pos.y + 0.95, z: e.pos.z };
-      const centerHit = this.physics.castRay(origin, { x: fx, y: 0, z: fz }, 1.28, e.collider);
-      if (centerHit?.meta?.kind === 'door' && centerHit.meta.ref && !centerHit.meta.ref.isOpen) {
-        centerHit.meta.ref.isOpen = true;
-        centerHit.meta.ref.targetAngle = (centerHit.meta.ref.openDir || 1) * Math.PI * 0.52;
-      } else if (centerHit && centerHit.meta?.kind !== 'enemy' && centerHit.meta?.kind !== 'player' && centerHit.meta?.kind !== 'stairs') {
-        const c = 0.809;
-        const s = 0.588;
-        const leftDir = { x: fx * c - fz * s, y: 0, z: fx * s + fz * c };
-        const rightDir = { x: fx * c + fz * s, y: 0, z: -fx * s + fz * c };
-        const hitL = this.physics.castRay(origin, leftDir, 1.25, e.collider);
-        const hitR = this.physics.castRay(origin, rightDir, 1.25, e.collider);
-        const side = !hitL && hitR ? 1 : hitL && !hitR ? -1 : e.strafeDir;
-        const tx = -fz * side;
-        const tz = fx * side;
-        vx = (fx * 0.35 + tx * 0.92) * horizMag;
-        vz = (fz * 0.35 + tz * 0.92) * horizMag;
+      const blocked = this._castMoveObstacleRay(e, fx, fz, 1.32);
+      if (blocked) {
+        // Multi-angle fan search instead of blind 35%-into-wall pushing!
+        const angles = [0.66, 1.25, 1.85]; // ~38°, ~72°, ~106°
+        const sideOrder = e.strafeDir >= 0 ? [1, -1] : [-1, 1];
+        let steered = false;
+        for (const ang of angles) {
+          const c = Math.cos(ang);
+          const s = Math.sin(ang);
+          for (const sg of sideOrder) {
+            const dx = fx * c - fz * (s * sg);
+            const dz = fx * (s * sg) + fz * c;
+            if (!this._castMoveObstacleRay(e, dx, dz, 1.35)) {
+              const spd = ang > 1.5 ? horizMag * 0.65 : horizMag * 0.88;
+              vx = dx * spd;
+              vz = dz * spd;
+              steered = true;
+              break;
+            }
+          }
+          if (steered) break;
+        }
+        if (!steered) {
+          vx = 0;
+          vz = 0;
+          horizMag = 0;
+        }
       }
     }
 
@@ -859,7 +889,7 @@ export class EnemySystem {
         wishVx = moveRes.vx;
         wishVz = moveRes.vz;
         desiredAnim = moveRes.moving ? 'walk' : 'idle';
-        if (!moveRes.moving || e.stuckTimer > 1.2) {
+        if (!moveRes.moving || e.stuckTimer > 0.75) {
           e.stuckTimer = 0;
           if (e.patrolNodes.length > 0) {
             const wpIdx = e.patrolNodes[Math.floor(Math.random() * e.patrolNodes.length)];
@@ -895,26 +925,49 @@ export class EnemySystem {
         e.aimPitch = THREE.MathUtils.clamp(Math.atan2(dy, Math.max(1, horizDist)), -0.6, 0.6);
 
         e.strafeTimer -= stepDt;
-        if (e.strafeTimer <= 0) {
+        if (e.strafeTimer <= 0 || e.stuckTimer > 0.45) {
+          if (e.stuckTimer > 0.45) e.stuckTimer = 0;
           e.strafeTimer = 1.4 + Math.random() * 1.2;
           e.strafeDir = -e.strafeDir;
         }
 
-        if (horizDist > 16 && Math.abs(dy) < 2.1) {
-          wishVx = (dx / horizDist) * 2.95;
-          wishVz = (dz / horizDist) * 2.95;
+        const dirX = dx / Math.max(0.1, horizDist);
+        const dirZ = dz / Math.max(0.1, horizDist);
+
+        if (!sees && horizDist > 6.5) {
+          // Lost line of sight: navigate cleanly along A* graph instead of running blindly into walls
+          if (!e.path || e.pathIdx >= e.path.length) {
+            e.path = findPathAStar(this.waypoints, e.pos, aimRef, this.physics);
+            e.pathIdx = 0;
+          }
+          const moveRes = this._computePathMove(e, 2.75);
+          wishVx = moveRes.vx;
+          wishVz = moveRes.vz;
+          desiredAnim = moveRes.moving ? 'run' : 'aimIdle';
+        } else if (sees && horizDist > 16 && Math.abs(dy) < 2.1 && this._hasMoveClearance(e, dirX, dirZ, 2.2)) {
+          wishVx = dirX * 2.95;
+          wishVz = dirZ * 2.95;
           desiredAnim = 'run';
-        } else if (horizDist < 4.5 && Math.abs(dy) < 2.1) {
-          wishVx = -(dx / Math.max(0.1, horizDist)) * 1.45;
-          wishVz = -(dz / Math.max(0.1, horizDist)) * 1.45;
+        } else if (horizDist < 4.5 && Math.abs(dy) < 2.1 && this._hasMoveClearance(e, -dirX, -dirZ, 1.35)) {
+          wishVx = -dirX * 1.45;
+          wishVz = -dirZ * 1.45;
           desiredAnim = 'aimWalk';
         } else if (horizDist > 4.5) {
           const rx = Math.cos(e.yaw) * e.strafeDir;
           const rz = -Math.sin(e.yaw) * e.strafeDir;
           const strafeSpeed = e.pos.y > 0.6 ? 0.95 : 1.35;
-          wishVx = rx * strafeSpeed;
-          wishVz = rz * strafeSpeed;
-          desiredAnim = 'aimWalk';
+          if (this._hasMoveClearance(e, rx, rz, 1.25)) {
+            wishVx = rx * strafeSpeed;
+            wishVz = rz * strafeSpeed;
+            desiredAnim = 'aimWalk';
+          } else if (this._hasMoveClearance(e, -rx, -rz, 1.25)) {
+            e.strafeDir = -e.strafeDir;
+            wishVx = -rx * strafeSpeed;
+            wishVz = -rz * strafeSpeed;
+            desiredAnim = 'aimWalk';
+          } else {
+            desiredAnim = 'aimIdle';
+          }
         } else {
           desiredAnim = 'aimIdle';
         }

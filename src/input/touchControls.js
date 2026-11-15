@@ -320,8 +320,10 @@ export class InputManager {
           const cleanPitch = Math.abs(rx) < dz ? 0 : rx - Math.sign(rx) * dz;
           const cleanYaw = Math.abs(ry) < dz ? 0 : ry - Math.sign(ry) * dz;
 
-          const filtYaw = this._filterYaw.filter(-cleanYaw, dt);
-          const filtPitch = this._filterPitch.filter(-cleanPitch * (this.settings.gyroInvertY ? -1 : 1), dt);
+          const invX = this.settings.gyroInvertX ? -1 : 1;
+          const invY = this.settings.gyroInvertY ? -1 : 1;
+          const filtYaw = this._filterYaw.filter(cleanYaw * invX, dt);
+          const filtPitch = this._filterPitch.filter(cleanPitch * invY, dt);
 
           if (!this._isGyroAllowedNow()) return;
           const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.92 * this._getAimScale(true);
@@ -404,8 +406,10 @@ export class InputManager {
       dPitchRad = tmp;
     }
 
-    const rateYaw = this._filterYaw.filter(-dYawRad / dt, dt);
-    const ratePitch = this._filterPitch.filter((-dPitchRad / dt) * (this.settings.gyroInvertY ? -1 : 1), dt);
+    const invX = this.settings.gyroInvertX ? -1 : 1;
+    const invY = this.settings.gyroInvertY ? -1 : 1;
+    const rateYaw = this._filterYaw.filter((-dYawRad / dt) * invX, dt);
+    const ratePitch = this._filterPitch.filter((-dPitchRad / dt) * invY, dt);
 
     if (!this._isGyroAllowedNow()) return;
     const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.90 * this._getAimScale(true);
@@ -502,11 +506,10 @@ export class InputManager {
       const cleanYaw = Math.abs(rawYawDegPerSec) < dz ? 0 : rawYawDegPerSec - Math.sign(rawYawDegPerSec) * dz;
       const cleanPitch = Math.abs(rawPitchDegPerSec) < dz ? 0 : rawPitchDegPerSec - Math.sign(rawPitchDegPerSec) * dz;
 
-      const fy = this._filterYaw.filter(THREE.MathUtils.degToRad(cleanYaw), dt);
-      const fp = this._filterPitch.filter(
-        THREE.MathUtils.degToRad(cleanPitch) * (this.settings.gyroInvertY ? -1 : 1),
-        dt
-      );
+      const invX = this.settings.gyroInvertX ? -1 : 1;
+      const invY = this.settings.gyroInvertY ? -1 : 1;
+      const fy = this._filterYaw.filter(THREE.MathUtils.degToRad(cleanYaw) * invX, dt);
+      const fp = this._filterPitch.filter(THREE.MathUtils.degToRad(cleanPitch) * invY, dt);
 
       if (!this._isGyroAllowedNow()) return;
       const sens = (this.settings.gyroSensitivity ?? 1.0) * 0.85 * this._getAimScale(true);

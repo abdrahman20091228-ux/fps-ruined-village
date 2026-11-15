@@ -46,7 +46,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="screen-overlay">
     <div class="loading-panel">
-      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V7</div>
+      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V9</div>
       <h1 class="game-title">ASHES OF VALE</h1>
       <p class="subtitle">WOODLAND VILLAGE &amp; MULTI-STORY ASSAULT</p>
 
@@ -79,7 +79,7 @@
     <div class="lobby-shell">
       <header class="lobby-topbar">
         <div class="lobby-brand">
-          <div class="mission-tag">OPERATION: ASHEN THRESHOLD // V7</div>
+          <div class="mission-tag">OPERATION: ASHEN THRESHOLD // V9</div>
           <h1 class="lobby-title">ASHES OF VALE</h1>
         </div>
 
@@ -225,6 +225,10 @@
           <input id="set-gyro-sens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" />
         </label>
         <label class="setting-row setting-toggle">
+          <span>Invert Gyro Yaw (Left/Right)</span>
+          <input id="set-gyro-invert-x" type="checkbox" />
+        </label>
+        <label class="setting-row setting-toggle">
           <span>Invert Gyro Pitch (Up/Down)</span>
           <input id="set-gyro-invert-y" type="checkbox" />
         </label>
@@ -326,10 +330,11 @@
     </div>
   </div>
 
-  <!-- In-Game Modern Tactical HUD -->
+  <!-- In-Game PUBG Mobile / Delta Force Tactical HUD -->
   <div id="hud" class="hidden">
-    <!-- Top-Left: Mini Threat Radar + Compact Telemetry -->
+    <!-- Top-Left: Clean Dual-Ring Minimap Radar + Compact Telemetry -->
     <div id="radar-shell">
+      <div class="radar-n-pip">N</div>
       <canvas id="tactical-radar" width="84" height="84"></canvas>
     </div>
     <div id="top-telemetry">
@@ -337,26 +342,29 @@
       <div id="debug-tris">TRIS: 0 | CALLS: 0</div>
     </div>
 
-    <!-- Top-Center: Compact Compass + Threat Rail -->
+    <!-- Top-Center: Delta Force / PUBG Graduated Compass Ribbon + Threat Rail -->
     <div id="compass-wrapper">
+      <div id="compass-threats"></div>
+      <div class="compass-tape-shell">
+        <div class="compass-caret">▼</div>
+        <div id="compass-track" aria-hidden="true"></div>
+      </div>
       <div id="compass-bar">
-        <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><polygon points="8,1 11,9 8,7.5 5,9" fill="#c99b42"/></svg>
-        <span id="compass-dir">N 000°</span>
-        <span class="sep">|</span>
+        <span id="compass-dir">S 180°</span>
+        <span class="sep">·</span>
         <span id="zone-indicator">OUTDOORS</span>
       </div>
-      <div id="compass-threats"></div>
     </div>
 
-    <!-- Top-Right: Hostiles Counter + Pause -->
+    <!-- Top-Right: Chamfered Delta Force Hostiles Chip + Pause -->
     <div id="objective-box">
-      <svg class="hud-svg-xs" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.5" stroke="#c99b42" stroke-width="1.5"/><circle cx="8" cy="8" r="1.5" fill="#c99b42"/></svg>
+      <span class="obj-diamond"></span>
       <span class="obj-label">HOSTILES</span>
       <span id="objective-count">0 / 0</span>
     </div>
 
     <button id="btn-pause-hud" class="hud-icon-btn" aria-label="Pause Menu">
-      <svg class="hud-svg-btn" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
+      <svg class="hud-svg-btn" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M5 12h14M5 17h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
     </button>
 
     <div id="mission-banner" class="hidden">ELIMINATE 12 HOSTILES — CLEAR HOUSES &amp; 5-STORY TOWER</div>
@@ -385,26 +393,29 @@
 
     <div id="interact-prompt" class="hidden">DOOR // OPEN OR CLOSE</div>
 
-    <!-- Bottom-Center Combat Dock: Slim HP Bar + Tappable Weapon/Ammo Switcher Card -->
+    <!-- Bottom-Center Combat Dock: PUBG Segmented HP Gauge + Delta Force Weapon Module -->
     <div id="hud-bottom-dock">
       <div id="hud-hp-card">
-        <div class="hp-row"><span>HP</span><strong id="hp-value">100</strong></div>
+        <div class="hp-row">
+          <span class="hp-tag"><i class="hp-cross">+</i>HP</span>
+          <strong id="hp-value">100</strong>
+        </div>
         <div class="hp-bar-track"><div id="hp-bar-fill" style="width: 100%"></div></div>
       </div>
       <button id="btn-weapon" class="hud-weapon-card" aria-label="Switch Weapon">
-        <div class="weapon-card-top">
-          <svg class="t-svg-wide" viewBox="0 0 36 20" fill="none">
-            <path d="M3 9h21l3 2h5v2.2h-6l-2-1.2H16l-1.5 3.2h-2.8L12.2 12.6H6L4 15V9z" stroke="#f0ede6" stroke-width="1.5" stroke-linejoin="round"/>
-            <path d="M13 9V6.5h6V9" stroke="#c99b42" stroke-width="1.5"/>
+        <div class="weapon-card-left">
+          <svg id="weapon-svg" class="t-svg-wide" viewBox="0 0 48 18" fill="none">
+            <path d="M3 7.5h25l2 1.5h13v2h-11l-2.5 1.2H25l-1 4.3h-3.2L21.5 12h-5.2L14 15.8h-2.8l1.2-3.8H6L3 13.5v-6z" fill="currentColor" opacity="0.92"/>
+            <rect x="15" y="4.2" width="7" height="2.4" rx="0.6" fill="#e5b34b"/>
           </svg>
           <span id="weapon-name">M4 HOLO</span>
         </div>
-        <div id="ammo-display"><span id="ammo-mag">30</span> <small>/ <span id="ammo-reserve">150</span></small></div>
+        <div id="ammo-display"><span id="ammo-mag">30</span><small>/<span id="ammo-reserve">150</span></small></div>
       </button>
     </div>
   </div>
 
-  <!-- Mobile Touch Controls (PUBG Sprint Joystick + Fire-Only Trigger + ADS Drag) -->
+  <!-- Mobile Touch Controls (PUBG / Delta Force Glassmorphic Tactical Triggers) -->
   <div id="touch-controls" class="hidden">
     <div id="joystick-zone">
       <div id="joystick-base">
@@ -418,44 +429,45 @@
 
     <div id="touch-buttons-right">
       <button id="btn-fire" class="t-btn t-btn-fire" aria-label="Fire">
-        <svg class="t-svg-lg" viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="11" stroke="#f5d48a" stroke-width="1.6" stroke-dasharray="4 3"/>
-          <path d="M16 2v6M16 24v6M2 16h6M24 16h6" stroke="#f0ede6" stroke-width="2" stroke-linecap="round"/>
-          <path d="M16 10l2.2 5v4h-4.4v-4L16 10z" fill="#c99b42"/>
+        <svg class="t-svg-lg" viewBox="0 0 36 36" fill="none">
+          <circle cx="18" cy="18" r="14" stroke="#f2c45a" stroke-width="1.3" stroke-dasharray="6 4" opacity="0.88"/>
+          <path d="M18 8c1.9 3.6 2.8 6.4 2.8 9.2v4.8h-5.6v-4.8C15.2 14.4 16.1 11.6 18 8z" fill="#ffffff" opacity="0.95"/>
+          <rect x="14.5" y="23.5" width="7" height="2.2" rx="0.6" fill="#f2c45a"/>
         </svg>
       </button>
       <button id="btn-ads" class="t-btn t-btn-ads" aria-label="Aim Down Sights">
         <svg class="t-svg" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="7.5" stroke="#c99b42" stroke-width="1.7"/>
-          <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" stroke="#f0ede6" stroke-width="1.7" stroke-linecap="round"/>
-          <circle cx="12" cy="12" r="1.4" fill="#c99b42"/>
+          <circle cx="12" cy="12" r="7" stroke="#ffffff" stroke-width="1.5" opacity="0.9"/>
+          <path d="M12 2.5v3.5M12 18v3.5M2.5 12H6M18 12h3.5" stroke="#f2c45a" stroke-width="1.7" stroke-linecap="round"/>
+          <circle cx="12" cy="12" r="1.4" fill="#f2c45a"/>
         </svg>
         <span class="t-tag">ADS</span>
       </button>
       <button id="btn-reload" class="t-btn t-btn-sm" aria-label="Reload">
         <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
-          <path d="M4.5 11a7.5 7.5 0 0 1 13-4.8L19.5 8" stroke="#f0ede6" stroke-width="1.9" stroke-linecap="round"/>
-          <path d="M19.5 4v4h-4" stroke="#c99b42" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M19.5 13a7.5 7.5 0 0 1-13 4.8L4.5 16" stroke="#f0ede6" stroke-width="1.9" stroke-linecap="round"/>
+          <path d="M5 10.5A7.2 7.2 0 0 1 17.5 6.8L19.5 8.8" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M19.5 4.5v4.3h-4.3" stroke="#f2c45a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M19 13.5A7.2 7.2 0 0 1 6.5 17.2L4.5 15.2" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
       </button>
       <button id="btn-jump" class="t-btn t-btn-sm" aria-label="Jump">
         <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
-          <path d="M6 15l6-6 6 6" stroke="#c99b42" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M6 19.5l6-5 6 5" stroke="#f0ede6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="12" cy="5.5" r="2" fill="#f2c45a"/>
+          <path d="M8.5 11.5L12 8.5l3.5 3M9.5 18.5l2.5-5.5 2.5 5.5" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
       <button id="btn-crouch" class="t-btn t-btn-sm" aria-label="Crouch">
         <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
-          <path d="M6 9l6 6 6-6" stroke="#f0ede6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-          <path d="M7 18h10" stroke="#c99b42" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="13" cy="6.5" r="2" fill="#ffffff"/>
+          <path d="M8.5 14l3.5-3.5 3.5 2.5-2 4.5H7.5" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M6 19.5h12" stroke="#f2c45a" stroke-width="1.6" stroke-linecap="round"/>
         </svg>
       </button>
       <button id="btn-door" class="t-btn t-btn-door hidden" aria-label="Door">
         <svg class="t-svg-sm" viewBox="0 0 24 24" fill="none">
-          <rect x="6" y="3" width="11" height="18" rx="1" stroke="#c99b42" stroke-width="1.8"/>
-          <circle cx="14" cy="12" r="1.4" fill="#f0ede6"/>
-          <path d="M19 9l2.5 3-2.5 3" stroke="#f0ede6" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="6" y="3" width="11" height="18" rx="1" stroke="#f2c45a" stroke-width="1.8"/>
+          <circle cx="14" cy="12" r="1.4" fill="#ffffff"/>
+          <path d="M19 9l2.5 3-2.5 3" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </button>
     </div>

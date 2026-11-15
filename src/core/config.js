@@ -58,6 +58,7 @@ export const DEFAULT_SETTINGS = {
   gyroMode: 'always', // 'always' | 'ads' | 'off'
   gyroEnabled: true,
   gyroSensitivity: 1.0,
+  gyroInvertX: false,
   gyroInvertY: false,
   gyroSwapAxes: false,
   preferredWeapon: 'm4',

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-const SUN_DIR = new THREE.Vector3(22, 32, 14).normalize();
+const SUN_DIR = new THREE.Vector3(22, 13, 24).normalize();
 
 /**
  * Zero-light baked shader material using MeshBasicMaterial + vertex-side directional/hemi shading
@@ -14,9 +14,10 @@ export function createBakedLitBasicMaterial(opts = {}) {
     transparent = false,
     opacity = 1.0,
     side = THREE.FrontSide,
-    sunWeight = 0.38,
+    alphaTest = 0.0,
+    sunWeight = 0.44,
     hemiWeight = 0.22,
-    baseFloor = 0.66,
+    baseFloor = 0.62,
     specBoost = 0.0,
     probeTint = null,
   } = opts;
@@ -28,6 +29,7 @@ export function createBakedLitBasicMaterial(opts = {}) {
     transparent,
     opacity,
     side,
+    alphaTest,
   });
 
   const tintVec = probeTint ? probeTint.clone() : new THREE.Vector3(1, 1, 1);
@@ -38,7 +40,7 @@ export function createBakedLitBasicMaterial(opts = {}) {
     uMuzzleFlash: { value: 0.0 },
   };
   mat.userData.bakedUniforms = uniforms;
-  mat.customProgramCacheKey = () => 'baked-lit-basic-v1';
+  mat.customProgramCacheKey = () => 'baked-lit-basic-v2';
 
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uSunDir = uniforms.uSunDir;
@@ -75,8 +77,10 @@ if ( uLightParams.w > 0.001 ) {
   vec3 halfV = normalize( vec3( 0.35, 0.72, 0.60 ) );
   bSpec = pow( max( 0.0, dot( vNorm, halfV ) ), 22.0 ) * uLightParams.w;
 }
-float bShade = uLightParams.x + bHemi * uLightParams.y + bNdl * uLightParams.z;
-vBakedShade = uProbeTint * ( bShade + vec3( bSpec ) ) + vec3( 0.36, 0.24, 0.10 ) * uMuzzleFlash;`
+vec3 bSunCol = vec3( 1.15, 0.96, 0.74 ) * ( bNdl * uLightParams.z );
+vec3 bSkyCol = vec3( 0.80, 0.88, 1.02 ) * ( bHemi * uLightParams.y );
+vec3 bShadeCol = vec3( uLightParams.x ) + bSkyCol + bSunCol + vec3( bSpec * 1.10, bSpec * 0.95, bSpec * 0.78 );
+vBakedShade = uProbeTint * bShadeCol + vec3( 0.36, 0.24, 0.10 ) * uMuzzleFlash;`
       );
 
     shader.fragmentShader = shader.fragmentShader

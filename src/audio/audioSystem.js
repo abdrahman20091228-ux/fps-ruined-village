@@ -58,10 +58,19 @@ export class AudioSystem {
     this.masterGain.gain.value = this.settings.volume ?? 0.85;
     this.masterGain.connect(ctx.destination);
 
+    // Master dynamics compressor prevents mobile speaker clipping during loud full-auto bursts
+    this.compressor = ctx.createDynamicsCompressor();
+    this.compressor.threshold.setValueAtTime(-10, ctx.currentTime);
+    this.compressor.knee.setValueAtTime(14, ctx.currentTime);
+    this.compressor.ratio.setValueAtTime(4.5, ctx.currentTime);
+    this.compressor.attack.setValueAtTime(0.002, ctx.currentTime);
+    this.compressor.release.setValueAtTime(0.14, ctx.currentTime);
+    this.compressor.connect(this.masterGain);
+
     // Subtle stereo master bus
     this.sfxBus = ctx.createGain();
-    this.sfxBus.gain.value = 1.0;
-    this.sfxBus.connect(this.masterGain);
+    this.sfxBus.gain.value = 1.08;
+    this.sfxBus.connect(this.compressor);
 
     // Outdoor wide stereo slapback bus (used for player's own outdoor shot tail only!)
     this.outdoorBus = ctx.createGain();
@@ -323,7 +332,7 @@ export class AudioSystem {
       bodySrc.buffer = buf;
       bodySrc.playbackRate.value = pitchVar;
       if (sourcePos) this._track3DVoice(bodySrc);
-      this._routeNode(bodySrc, sourcePos, isPlayer ? 0.90 : 0.82, isPlayer, isPlayer ? 0.04 : 0);
+      this._routeNode(bodySrc, sourcePos, isPlayer ? 1.12 : 0.72, isPlayer, isPlayer ? 0.03 : 0);
       bodySrc.start(t);
     } else {
       const osc = ctx.createOscillator();
@@ -331,29 +340,29 @@ export class AudioSystem {
       osc.frequency.setValueAtTime(weaponId === 'akm' ? 145 : 175, t);
       osc.frequency.exponentialRampToValueAtTime(42, t + 0.11);
       const env = ctx.createGain();
-      env.gain.setValueAtTime(0.8, t);
+      env.gain.setValueAtTime(0.85, t);
       env.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
       osc.connect(env);
       if (sourcePos) this._track3DVoice(osc);
-      this._routeNode(env, sourcePos, 0.9, isPlayer);
+      this._routeNode(env, sourcePos, isPlayer ? 1.05 : 0.75, isPlayer);
       osc.start(t);
       osc.stop(t + 0.15);
     }
 
-    // Layer 2: Subtle mechanical bolt snap (player only)
+    // Layer 2: Crisp mechanical bolt snap (subtle accent under recorded crack)
     if (isPlayer) {
       const mechNoise = ctx.createBufferSource();
-      mechNoise.buffer = this._noiseBuffer(0.032);
+      mechNoise.buffer = this._noiseBuffer(0.024);
       const hp = ctx.createBiquadFilter();
       hp.type = 'bandpass';
       hp.frequency.value = weaponId === 'pistol' ? 3200 : 2400;
       hp.Q.value = 1.4;
       const mechEnv = ctx.createGain();
-      mechEnv.gain.setValueAtTime(0.22, t);
-      mechEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.032);
+      mechEnv.gain.setValueAtTime(0.14, t);
+      mechEnv.gain.exponentialRampToValueAtTime(0.001, t + 0.024);
       mechNoise.connect(hp);
       hp.connect(mechEnv);
-      this._routeNode(mechEnv, null, 1.0, false, 0.10);
+      this._routeNode(mechEnv, null, 1.0, false, 0.08);
       mechNoise.start(t);
     }
 
@@ -364,24 +373,24 @@ export class AudioSystem {
   }
 
   playWhiz(pos) {
-    this.playClip('bullet_whiz', pos, 0.68, 0.14);
+    this.playClip('bullet_whiz', pos, 0.72, 0.14);
   }
 
   playJump() {
-    this.playClip('jump', null, 0.36, 0.08);
+    this.playClip('jump', null, 0.54, 0.08);
   }
 
   playLand(fallSpeed = 4) {
-    const g = Math.min(0.65, Math.max(0.22, fallSpeed * 0.07));
+    const g = Math.min(0.85, Math.max(0.36, fallSpeed * 0.10));
     this.playClip('land', null, g, 0.08);
   }
 
   playPlayerHurt() {
-    this.playClip('player_hurt', null, 0.72, 0.10);
+    this.playClip('player_hurt', null, 0.85, 0.10);
   }
 
   playWeaponSwitch() {
-    this.playClip('weapon_switch', null, 0.52, 0.06);
+    this.playClip('weapon_switch', null, 0.74, 0.06);
   }
 
   playHitMarker(isHead = false, isKill = false) {

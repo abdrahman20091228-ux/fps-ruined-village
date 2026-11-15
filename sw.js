@@ -1,4 +1,4 @@
-const SHELL_CACHE = 'ashes-of-vale-shell-v8';
+const SHELL_CACHE = 'ashes-of-vale-shell-v9';
 const SHELL_URLS = [
   './',
   './index.html',

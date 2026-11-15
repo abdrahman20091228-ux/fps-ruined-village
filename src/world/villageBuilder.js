@@ -17,9 +17,9 @@ function makeBoxGeo(
   aoTop = 1.0,
   subdivide = false
 ) {
-  const sw = subdivide && w >= 2.1 ? Math.min(5, Math.max(1, Math.round(w / 1.75))) : 1;
-  const sh = subdivide && h >= 1.9 ? Math.min(3, Math.max(1, Math.round(h / 1.45))) : 1;
-  const sd = subdivide && d >= 2.1 ? Math.min(5, Math.max(1, Math.round(d / 1.75))) : 1;
+  const sw = subdivide && w >= 2.3 ? Math.min(4, Math.max(1, Math.round(w / 2.6))) : 1;
+  const sh = subdivide && h >= 2.1 ? Math.min(2, Math.max(1, Math.round(h / 2.2))) : 1;
+  const sd = subdivide && d >= 2.3 ? Math.min(4, Math.max(1, Math.round(d / 2.6))) : 1;
 
   const g = new THREE.BoxGeometry(w, h, d, sw, sh, sd);
   const uv = g.attributes.uv;
@@ -110,6 +110,15 @@ export class VillageBuilder {
     this.bakeOccluders = [];
     this.staticShadowBlobs = [];
     this.shadowBlobTexture = null;
+    this.skyTexture = null;
+    this._leafTexture = null;
+    this._smokeTexture = null;
+    this._smokeInst = null;
+    this._smokePuffs = [];
+    this._smokeDummy = new THREE.Object3D();
+    this._smokeOrigin = new THREE.Vector3(-10.4, 7.25, 19.8);
+    this._fireEmbers = null;
+    this._fireTime = 0;
     this.dynamicPropSyncs = [];
   }
 
@@ -149,6 +158,9 @@ export class VillageBuilder {
       texAsphalt,
       texGroundLM,
       texShadowBlob,
+      texSkyDusk,
+      texLeaf,
+      texSmoke,
       vertexGiBuf,
       probesBuf,
     ] = await Promise.all([
@@ -174,11 +186,32 @@ export class VillageBuilder {
           colorSpace: THREE.SRGBColorSpace,
         })
         .catch(() => null),
+      this.assets
+        .loadTexture('sky_dusk', 1, 1, {
+          clamp: true,
+          colorSpace: THREE.SRGBColorSpace,
+        })
+        .catch(() => null),
+      this.assets
+        .loadTexture('leaf_cluster', 1, 1, {
+          clamp: true,
+          colorSpace: THREE.SRGBColorSpace,
+        })
+        .catch(() => null),
+      this.assets
+        .loadTexture('smoke_puff', 1, 1, {
+          clamp: true,
+          colorSpace: THREE.SRGBColorSpace,
+        })
+        .catch(() => null),
       this.assets.getArrayBuffer('assets/baked/world_vertex_gi.bin').catch(() => null),
       this.assets.getArrayBuffer('assets/baked/light_probes.bin').catch(() => null),
     ]);
 
     this.shadowBlobTexture = texShadowBlob;
+    this.skyTexture = texSkyDusk;
+    this._leafTexture = texLeaf;
+    this._smokeTexture = texSmoke;
     if (probesBuf) {
       this.probeGrid.loadFromArrayBuffer(probesBuf);
     }
@@ -187,32 +220,34 @@ export class VillageBuilder {
 
     // Baked vertex-lit basic materials (0 runtime lights!) for LOD2 & non-vertex-GI instanced props
     this.mats = {
-      concrete: createBakedLitBasicMaterial({ map: texConcrete, color: 0xe6e8e1 }),
-      brick: createBakedLitBasicMaterial({ map: texBrick, color: 0xe2d9d1 }),
-      plaster: createBakedLitBasicMaterial({ map: texPlaster, color: 0xf1efe8 }),
-      wood: createBakedLitBasicMaterial({ map: texWood, color: 0xd0c1ae }),
+      concrete: createBakedLitBasicMaterial({ map: texConcrete, color: 0xdad5ca }),
+      brick: createBakedLitBasicMaterial({ map: texBrick, color: 0xd8c6b6 }),
+      plaster: createBakedLitBasicMaterial({ map: texPlaster, color: 0xe6e0d2 }),
+      wood: createBakedLitBasicMaterial({ map: texWood, color: 0xbfaa92 }),
       dirt: new THREE.MeshBasicMaterial({
         map: texDirt,
+        color: 0xc2b9a8,
         ...(texGroundLM ? { lightMap: texGroundLM, lightMapIntensity: lmIntensity } : {}),
       }),
-      metal: createBakedLitBasicMaterial({ map: texMetal, color: 0xbac0c6 }),
-      roof: createBakedLitBasicMaterial({ map: texRoof }),
+      metal: createBakedLitBasicMaterial({ map: texMetal, color: 0xb2b6ba }),
+      roof: createBakedLitBasicMaterial({ map: texRoof, color: 0x9c9d9e }),
       asphalt: new THREE.MeshBasicMaterial({
         map: texAsphalt,
+        color: 0xd6cfc5,
         ...(texGroundLM ? { lightMap: texGroundLM, lightMapIntensity: lmIntensity } : {}),
       }),
-      trimDark: createBakedLitBasicMaterial({ color: 0x3b4042 }),
-      curbStone: new THREE.MeshBasicMaterial({ color: 0x8d9496, vertexColors: true }),
+      trimDark: createBakedLitBasicMaterial({ color: 0x35393b }),
+      curbStone: new THREE.MeshBasicMaterial({ color: 0x808382, vertexColors: true }),
     };
 
     // Pure MeshBasicMaterial with baked offline Vertex GI (direct sun + sky bounce + corner AO!)
     this.archMats = {
-      concrete: new THREE.MeshBasicMaterial({ map: texConcrete, color: 0xebede6, vertexColors: true }),
-      brick: new THREE.MeshBasicMaterial({ map: texBrick, color: 0xe5dcd4, vertexColors: true }),
-      plaster: new THREE.MeshBasicMaterial({ map: texPlaster, color: 0xf4f2eb, vertexColors: true }),
-      wood: new THREE.MeshBasicMaterial({ map: texWood, color: 0xd4c5b2, vertexColors: true }),
-      roof: new THREE.MeshBasicMaterial({ map: texRoof, vertexColors: true }),
-      trimDark: new THREE.MeshBasicMaterial({ color: 0x4f5659, vertexColors: true }),
+      concrete: new THREE.MeshBasicMaterial({ map: texConcrete, color: 0xdfdacf, vertexColors: true }),
+      brick: new THREE.MeshBasicMaterial({ map: texBrick, color: 0xdcc9b8, vertexColors: true }),
+      plaster: new THREE.MeshBasicMaterial({ map: texPlaster, color: 0xeae4d6, vertexColors: true }),
+      wood: new THREE.MeshBasicMaterial({ map: texWood, color: 0xc4af97, vertexColors: true }),
+      roof: new THREE.MeshBasicMaterial({ map: texRoof, color: 0x9ea0a2, vertexColors: true }),
+      trimDark: new THREE.MeshBasicMaterial({ color: 0x45494b, vertexColors: true }),
       curbStone: this.mats.curbStone,
     };
 
@@ -222,6 +257,7 @@ export class VillageBuilder {
     this._buildCourtyardWalls();
     await this._buildPropsAndWrecks();
     await this._buildFoliageAndUtilityLines();
+    this._buildWaterTowerAndFirePlume();
     this._buildRubbleInstances();
     this._buildStaticContactShadowBlobs();
     this._buildWaypointAndSpawnGraph();
@@ -549,14 +585,16 @@ export class VillageBuilder {
     const slopeAng = 0.44;
     const slopeW = W * 0.56;
     buckets.roof.push(makeBoxGeo(slopeW, 0.16, D + 0.65, -W * 0.25, roofY + 0.78, 0, 0, 0, slopeAng, 0.25, 0.84, 1.0, true));
-    buckets.roof.push(makeBoxGeo(slopeW * 0.86, 0.16, D * 0.68, W * 0.24, roofY + 0.84, -D * 0.14, 0, 0, -slopeAng, 0.25, 0.84, 1.0, true));
-    // Timber ridge beam & attic cross rafters
+    buckets.roof.push(makeBoxGeo(slopeW * 0.86, 0.16, D * 0.64, W * 0.24, roofY + 0.84, -D * 0.16, 0, 0, -slopeAng, 0.25, 0.84, 1.0, true));
+    // Timber ridge beam, attic cross rafters, & broken rafters projecting into breached roof opening
     buckets.wood.push(makeBoxGeo(0.20, 0.22, D + 0.45, 0, roofY + 1.48, 0, 0, 0, 0, 0.25, 0.84, 1.0));
     for (let z = -2.4; z <= 2.4; z += 1.6) {
       buckets.wood.push(makeBoxGeo(W * 0.94, 0.12, 0.14, 0, roofY + 0.04, z, 0, 0, 0, 0.25, 0.84, 1.0));
     }
+    buckets.wood.push(makeBoxGeo(slopeW * 0.78, 0.10, 0.12, W * 0.20, roofY + 0.92, D * 0.22, 0, 0.08, -slopeAng, 0.25, 0.75, 1.0));
+    buckets.wood.push(makeBoxGeo(slopeW * 0.65, 0.10, 0.12, W * 0.16, roofY + 1.02, D * 0.36, 0, -0.06, -slopeAng + 0.05, 0.25, 0.75, 1.0));
     lod1.roof.push(makeBoxGeo(slopeW, 0.24, D + 0.45, -W * 0.24, roofY + 0.78, 0, 0, 0, slopeAng, 0.25, 0.85, 1.0, true));
-    lod1.roof.push(makeBoxGeo(slopeW, 0.24, D + 0.45, W * 0.24, roofY + 0.78, 0, 0, 0, -slopeAng, 0.25, 0.85, 1.0, true));
+    lod1.roof.push(makeBoxGeo(slopeW * 0.90, 0.24, D * 0.72, W * 0.24, roofY + 0.80, -D * 0.12, 0, 0, -slopeAng, 0.25, 0.85, 1.0, true));
 
     // Brick chimney stack rising from gable roof (collided)
     addBox(-W * 0.24, roofY + 1.05, -D * 0.24, 0.82, 1.55, 0.82, 'brick', false, true, false);
@@ -597,8 +635,8 @@ export class VillageBuilder {
     g2.position.y = roofY * 0.5;
 
     lod.addLevel(g0, 0);
-    lod.addLevel(g1, 32);
-    lod.addLevel(g2, 64);
+    lod.addLevel(g1, 26);
+    lod.addLevel(g2, 56);
     this.scene.add(lod);
     this.lodObjects.push(lod);
 
@@ -1027,7 +1065,7 @@ export class VillageBuilder {
         );
         gLow.position.y = size.y * 0.45;
         lod.addLevel(gLow, cullDist);
-        if (cullDist < 48) lod.addLevel(new THREE.Group(), 72);
+        if (cullDist < 48) lod.addLevel(new THREE.Group(), 56);
       }
       this.scene.add(lod);
       this.lodObjects.push(lod);
@@ -1070,10 +1108,10 @@ export class VillageBuilder {
     };
 
     // Street Vehicle Wrecks (burnt pickups, sedans, tarp-covered cars — spaced clearly away from lamps & barriers)
-    placeProp(pickupGltf, { x: -2.0, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 46, isVehicle: true });
-    placeProp(sedanGltf, { x: 1.85, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 46, isVehicle: true });
-    placeProp(carGltf, { x: -1.35, y: 0.03, z: -15.4 }, 0.92, 0.96, 'metal', { cullDist: 46, isVehicle: true });
-    placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 46, isVehicle: true });
+    placeProp(pickupGltf, { x: -2.0, y: 0.03, z: 12.8 }, 0.36, 0.92, 'metal', { cullDist: 34, isVehicle: true });
+    placeProp(sedanGltf, { x: 1.85, y: 0.03, z: -5.5 }, -0.45, 0.98, 'metal', { cullDist: 34, isVehicle: true });
+    placeProp(carGltf, { x: -1.35, y: 0.03, z: -15.4 }, 0.92, 0.96, 'metal', { cullDist: 34, isVehicle: true });
+    placeProp(sedanGltf, { x: 16.5, y: 0.0, z: 7.5 }, 1.72, 0.96, 'metal', { cullDist: 34, isVehicle: true });
 
     // Road Barriers (batched into 1 InstancedMesh draw call + collided + baked occluders + contact blobs!)
     this._placeInstancedGltf(
@@ -1105,8 +1143,8 @@ export class VillageBuilder {
     this._placeInstancedGltf(lampGltf, lampPlacements, { physMat: 'metal', collide: false });
 
     // Garage shutters mounted flush on solid piers of House 2 (South pier) & House 4 (North pier)
-    placeProp(shutterGltf, { x: -15.1, y: 0.2, z: 4.02 }, 0, 0.85, 'metal', { collide: true, cullDist: 36 });
-    placeProp(shutterGltf, { x: -15.3, y: 0.2, z: -20.02 }, Math.PI, 0.85, 'metal', { collide: true, cullDist: 36 });
+    placeProp(shutterGltf, { x: -15.1, y: 0.2, z: 4.02 }, 0, 0.85, 'metal', { collide: true, cullDist: 26, tiny: true });
+    placeProp(shutterGltf, { x: -15.3, y: 0.2, z: -20.02 }, Math.PI, 0.85, 'metal', { collide: true, cullDist: 26, tiny: true });
 
     // Tyre Barricades & Corner Clusters (1 InstancedMesh draw call + collided + contact blobs!)
     this._placeInstancedGltf(
@@ -1123,8 +1161,8 @@ export class VillageBuilder {
     );
 
     // Generators & Jerrycans
-    placeProp(genGltf, { x: -10.5, y: 0.2, z: -1.6 }, 0.4, 1.0, 'metal', { cullDist: 28, tiny: true });
-    placeProp(genGltf, { x: 4.8, y: 0.2, z: -29.8 }, -0.5, 1.0, 'metal', { cullDist: 28, tiny: true });
+    placeProp(genGltf, { x: -10.5, y: 0.2, z: -1.6 }, 0.4, 1.0, 'metal', { cullDist: 24, tiny: true });
+    placeProp(genGltf, { x: 4.8, y: 0.2, z: -29.8 }, -0.5, 1.0, 'metal', { cullDist: 24, tiny: true });
     placeProp(jerryGltf, { x: -13.6, y: 0.2, z: 1.8 }, 0.6, 1.0, 'metal', { dynamic: true, mass: 10 });
     placeProp(jerryGltf, { x: -4.4, y: 0.2, z: -34.2 }, -0.4, 1.0, 'metal', { dynamic: true, mass: 10 });
 
@@ -1279,14 +1317,18 @@ export class VillageBuilder {
     let healedAmount = 0;
     for (const mk of this.medkits) {
       if (!mk.active) continue;
+      const dx = playerFeetPos.x - mk.pos.x;
+      const dz = playerFeetPos.z - mk.pos.z;
+      const d2 = dx * dx + dz * dz;
+      const vis = d2 < 1024;
+      mk.mesh.visible = vis;
+      if (!vis) continue;
       mk.phase += dt * 2.2;
       mk.mesh.rotation.y += dt * 1.1;
       mk.mesh.position.y = mk.baseY + Math.sin(mk.phase) * 0.04;
       if (player.health < player.maxHealth) {
-        const dx = playerFeetPos.x - mk.pos.x;
         const dy = Math.abs(playerFeetPos.y - mk.pos.y);
-        const dz = playerFeetPos.z - mk.pos.z;
-        if (dx * dx + dz * dz < 1.65 * 1.65 && dy < 1.8) {
+        if (d2 < 1.65 * 1.65 && dy < 1.8) {
           const prev = player.health;
           player.health = Math.min(player.maxHealth, player.health + 35);
           healedAmount = Math.round(player.health - prev);
@@ -1303,13 +1345,17 @@ export class VillageBuilder {
     let addedAmmo = 0;
     for (const ab of this.ammoBoxes) {
       if (!ab.active) continue;
+      const dx = playerFeetPos.x - ab.pos.x;
+      const dz = playerFeetPos.z - ab.pos.z;
+      const d2 = dx * dx + dz * dz;
+      const vis = d2 < 1024;
+      ab.mesh.visible = vis;
+      if (!vis) continue;
       ab.phase += dt * 2.0;
       ab.mesh.rotation.y -= dt * 1.05;
       ab.mesh.position.y = ab.baseY + Math.sin(ab.phase) * 0.04;
-      const dx = playerFeetPos.x - ab.pos.x;
       const dy = Math.abs(playerFeetPos.y - ab.pos.y);
-      const dz = playerFeetPos.z - ab.pos.z;
-      if (dx * dx + dz * dz < 1.75 * 1.75 && dy < 1.8) {
+      if (d2 < 1.75 * 1.75 && dy < 1.8) {
         const added = weapons.refillAmmo();
         if (added > 0) {
           addedAmmo = added;
@@ -1334,17 +1380,12 @@ export class VillageBuilder {
   }
 
   async _buildFoliageAndUtilityLines() {
-    const [tree1, _tree1Lod, tree2, _tree2Lod, bushGltf, grassGltf, rockGltf] = await Promise.all([
-      this.assets.loadModel('dead_tree1'),
-      this.assets.loadModel('dead_tree1_lod'),
-      this.assets.loadModel('dead_tree2'),
-      this.assets.loadModel('dead_tree2_lod'),
-      this.assets.loadModel('bush'),
+    const [grassGltf, rockGltf] = await Promise.all([
       this.assets.loadModel('grass'),
       this.assets.loadModel('rock'),
     ]);
 
-    // Lush Green European Pine Forest batched into InstancedMeshes (world-normal baked shader, zero draw-call bloat!)
+    // Natural Broadleaf Olive/Woodland Trees batched into 2 InstancedMesh draw calls (~44 tris/tree!)
     const treeSpots = [
       { x: -19.8, z: 27.5, s: 1.05 }, { x: 19.8, z: 26.5, s: 1.12 },
       { x: -20.5, z: 12.2, s: 1.0 }, { x: 20.5, z: 11.4, s: 1.08 },
@@ -1353,84 +1394,93 @@ export class VillageBuilder {
       { x: -15.5, z: -38.5, s: 1.15 }, { x: 15.5, z: -38.5, s: 1.08 },
       { x: -10.2, z: -26.8, s: 0.92 }, { x: 10.2, z: -26.8, s: 0.96 },
       { x: -19.0, z: 35.5, s: 1.22 }, { x: 19.0, z: 35.0, s: 1.15 },
-      // Outer woodland backdrop beyond perimeter wall for dense forest silhouette
       { x: -29.0, z: 24.0, s: 1.35 }, { x: 29.0, z: 20.0, s: 1.30 },
       { x: -30.5, z: 0.0, s: 1.40 }, { x: 30.5, z: -4.0, s: 1.35 },
       { x: -28.5, z: -22.0, s: 1.38 }, { x: 28.5, z: -25.0, s: 1.30 },
       { x: -24.0, z: -48.5, s: 1.42 }, { x: 24.0, z: -48.5, s: 1.40 },
     ];
 
-    const pineLeafMat = createBakedLitBasicMaterial({
-      color: 0x3b642e,
+    const trunkParts = [
+      new THREE.CylinderGeometry(0.11, 0.24, 2.7, 5, 1),
+      new THREE.CylinderGeometry(0.06, 0.11, 1.8, 4, 1),
+      new THREE.CylinderGeometry(0.06, 0.11, 1.7, 4, 1),
+      new THREE.CylinderGeometry(0.05, 0.10, 1.6, 4, 1),
+    ];
+    trunkParts[0].translate(0, 1.35, 0);
+    trunkParts[1].rotateZ(0.48); trunkParts[1].translate(-0.42, 3.0, 0.12);
+    trunkParts[2].rotateZ(-0.44); trunkParts[2].translate(0.40, 2.9, -0.15);
+    trunkParts[3].rotateX(0.46); trunkParts[3].translate(0.05, 3.0, 0.42);
+    const trunkGeo = mergeGeometries(trunkParts.map(ensureFloatAttributes), false);
+    const trunkPos = trunkGeo.attributes.position;
+    const trunkCols = new Float32Array(trunkPos.count * 3);
+    for (let i = 0; i < trunkPos.count; i++) {
+      const v = 0.65 + 0.35 * THREE.MathUtils.clamp(trunkPos.getY(i) / 3.8, 0, 1);
+      trunkCols[i * 3] = v; trunkCols[i * 3 + 1] = v; trunkCols[i * 3 + 2] = v;
+    }
+    trunkGeo.setAttribute('color', new THREE.BufferAttribute(trunkCols, 3));
+
+    const canopyCards = [];
+    const cardConfigs = [
+      { w: 3.6, h: 3.3, y: 4.2, rx: 0.08, ry: 0.0, rz: 0.05 },
+      { w: 3.5, h: 3.2, y: 4.3, rx: -0.10, ry: Math.PI / 3, rz: -0.06 },
+      { w: 3.4, h: 3.2, y: 4.1, rx: 0.06, ry: (2 * Math.PI) / 3, rz: 0.08 },
+      { w: 3.2, h: 2.7, y: 5.1, rx: 0.36, ry: 0.4, rz: 0.0 },
+      { w: 3.1, h: 2.7, y: 3.5, rx: -0.34, ry: -0.8, rz: 0.12 },
+    ];
+    for (const cc of cardConfigs) {
+      const p = new THREE.PlaneGeometry(cc.w, cc.h);
+      p.rotateX(cc.rx);
+      p.rotateY(cc.ry);
+      p.rotateZ(cc.rz);
+      p.translate(0, cc.y, 0);
+      canopyCards.push(ensureFloatAttributes(p));
+    }
+    const canopyGeo = mergeGeometries(canopyCards, false);
+    const cPos = canopyGeo.attributes.position;
+    const cCols = new Float32Array(cPos.count * 3);
+    for (let i = 0; i < cPos.count; i++) {
+      const v = 0.72 + 0.34 * THREE.MathUtils.clamp((cPos.getY(i) - 2.2) / 4.2, 0, 1);
+      cCols[i * 3] = v; cCols[i * 3 + 1] = v; cCols[i * 3 + 2] = v;
+    }
+    canopyGeo.setAttribute('color', new THREE.BufferAttribute(cCols, 3));
+
+    const barkMat = createBakedLitBasicMaterial({
+      color: 0x574434,
       vertexColors: true,
-      baseFloor: 0.60,
+      baseFloor: 0.56,
       hemiWeight: 0.24,
       sunWeight: 0.40,
     });
-    const pineBarkMat = createBakedLitBasicMaterial({
-      color: 0x624836,
+    const leafMat = createBakedLitBasicMaterial({
+      map: this._leafTexture || null,
+      color: this._leafTexture ? 0xadb88f : 0x566b3a,
       vertexColors: true,
+      alphaTest: this._leafTexture ? 0.42 : 0.0,
+      side: THREE.DoubleSide,
       baseFloor: 0.58,
-      hemiWeight: 0.22,
-      sunWeight: 0.36,
+      hemiWeight: 0.28,
+      sunWeight: 0.50,
     });
 
-    const placeInstancedTreeType = (srcScene, spots, baseScale) => {
-      if (!spots.length) return;
-      srcScene.updateMatrixWorld(true);
-      const parts = [];
-      const totalBox = new THREE.Box3();
-      srcScene.traverse((obj) => {
-        if (!obj.isMesh || !obj.geometry) return;
-        const geo = ensureFloatAttributes(obj.geometry.clone());
-        geo.applyMatrix4(obj.matrixWorld);
-        geo.computeBoundingBox();
-        if (geo.boundingBox) totalBox.union(geo.boundingBox);
-        const srcMat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
-        const isWood = !!srcMat?.name?.toLowerCase().includes('wood');
-        parts.push({ geo, mat: isWood ? pineBarkMat : pineLeafMat });
-      });
-      if (!parts.length || totalBox.isEmpty()) return;
+    const trunkInst = new THREE.InstancedMesh(trunkGeo, barkMat, treeSpots.length);
+    const canopyInst = new THREE.InstancedMesh(canopyGeo, leafMat, treeSpots.length);
+    trunkInst.frustumCulled = false;
+    canopyInst.frustumCulled = false;
 
-      const center = new THREE.Vector3();
-      totalBox.getCenter(center);
-      const minY = totalBox.min.y;
-      const heightSpan = Math.max(0.1, totalBox.max.y - minY);
-
-      const dummy = new THREE.Object3D();
-      for (const part of parts) {
-        part.geo.translate(-center.x, -minY, -center.z);
-        const posAttr = part.geo.attributes.position;
-        const cols = new Float32Array(posAttr.count * 3);
-        for (let i = 0; i < posAttr.count; i++) {
-          const t = THREE.MathUtils.clamp(posAttr.getY(i) / heightSpan, 0, 1);
-          const v = 0.68 + 0.38 * t;
-          cols[i * 3] = v;
-          cols[i * 3 + 1] = v;
-          cols[i * 3 + 2] = v;
-        }
-        part.geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
-
-        const inst = new THREE.InstancedMesh(part.geo, part.mat, spots.length);
-        inst.frustumCulled = false;
-        spots.forEach((sp, i) => {
-          dummy.position.set(sp.x, 0, sp.z);
-          dummy.rotation.set(0, sp.idx * 1.1, 0);
-          dummy.scale.setScalar(sp.s * baseScale);
-          dummy.updateMatrix();
-          inst.setMatrixAt(i, dummy.matrix);
-        });
-        inst.instanceMatrix.needsUpdate = true;
-        this.scene.add(inst);
-      }
-    };
-
-    const type1Spots = [];
-    const type2Spots = [];
+    const dummy = new THREE.Object3D();
     treeSpots.forEach((sp, idx) => {
-      const entry = { ...sp, idx };
-      if (idx % 2 === 0) type1Spots.push(entry);
-      else type2Spots.push(entry);
+      const edgeDist = Math.max(0, Math.abs(sp.x) - 25, Math.abs(sp.z + 4) - 46);
+      const groundY =
+        edgeDist > 0
+          ? Math.min(7.5, edgeDist * 0.19) * (0.65 + 0.35 * Math.sin(sp.x * 0.15 + sp.z * 0.12)) * 0.85
+          : 0;
+      dummy.position.set(sp.x, groundY, sp.z);
+      dummy.rotation.set(0, idx * 1.27, 0);
+      dummy.scale.setScalar(sp.s);
+      dummy.updateMatrix();
+      trunkInst.setMatrixAt(idx, dummy.matrix);
+      canopyInst.setMatrixAt(idx, dummy.matrix);
+
       if (Math.abs(sp.x) < 24 && Math.abs(sp.z) < 42) {
         this.physics.addStaticBox({ x: sp.x, y: 1.5, z: sp.z }, { x: 0.42, y: 1.5, z: 0.42 }, null, {
           material: 'wood',
@@ -1438,23 +1488,23 @@ export class VillageBuilder {
           penetrable: true,
         });
       }
-      // Record trunk + canopy occluders for ground lightmap & contact AO blob
       this._recordOccluder(sp.x, 1.5 * sp.s, sp.z, 0.32 * sp.s, 1.5 * sp.s, 0.32 * sp.s, 0, 0, 0, 'wall', 0x4b3b2c);
-      this._recordOccluder(sp.x, 4.6 * sp.s, sp.z, 1.85 * sp.s, 2.3 * sp.s, 1.85 * sp.s, 0, 0, 0, 'canopy', 0x2e4c24);
+      this._recordOccluder(sp.x, 4.4 * sp.s, sp.z, 1.95 * sp.s, 2.2 * sp.s, 1.95 * sp.s, 0, 0, 0, 'canopy', 0x3b4e2b);
       this.staticShadowBlobs.push({
         x: sp.x,
         y: 0.025,
         z: sp.z,
-        sx: 4.1 * sp.s,
-        sz: 4.1 * sp.s,
+        sx: 4.3 * sp.s,
+        sz: 4.3 * sp.s,
         ry: 0,
         opacity: 0.72,
       });
     });
-    placeInstancedTreeType(tree1.scene, type1Spots, 2.35);
-    placeInstancedTreeType(tree2.scene, type2Spots, 1.95);
+    trunkInst.instanceMatrix.needsUpdate = true;
+    canopyInst.instanceMatrix.needsUpdate = true;
+    this.scene.add(trunkInst, canopyInst);
 
-    // Dense Green Woodland Bushes batched into 1 InstancedMesh draw call (clear of trees & houses!)
+    // Lightweight Crossed Foliage Shrubs (6 tris per bush = 84 tris total instead of 2,800!)
     const bushSpots = [
       { x: -19.2, z: 31.2 }, { x: 19.2, z: 30.8 },
       { x: -17.8, z: 15.2 }, { x: 17.8, z: 14.2 },
@@ -1463,16 +1513,43 @@ export class VillageBuilder {
       { x: -16.8, z: 9.8 }, { x: 16.8, z: 9.8 },
       { x: -17.4, z: -10.4 }, { x: 17.4, z: -10.4 },
       { x: -9.8, z: -36.5 }, { x: 9.8, z: -36.5 },
-    ].map((sp, i) => ({ x: sp.x, y: 0, z: sp.z, ry: i * 0.9, s: 0.92 + (i % 3) * 0.14 }));
-    this._placeInstancedGltf(bushGltf, bushSpots, {
-      physMat: 'wood',
-      collide: true,
-      colliderScale: 0.65,
-      colorOverride: 0x3b632d,
-      recordOccluder: true,
-      occluderKind: 'canopy',
-      blobRadius: 1.05,
+    ];
+    const shrubPlanes = [];
+    for (let k = 0; k < 3; k++) {
+      const sp = new THREE.PlaneGeometry(1.75, 1.35);
+      sp.rotateY((k * Math.PI) / 3);
+      sp.translate(0, 0.62, 0);
+      shrubPlanes.push(ensureFloatAttributes(sp));
+    }
+    const shrubGeo = mergeGeometries(shrubPlanes, false);
+    const shrubMat = createBakedLitBasicMaterial({
+      map: this._leafTexture || null,
+      color: this._leafTexture ? 0x909b72 : 0x455e30,
+      alphaTest: this._leafTexture ? 0.42 : 0.0,
+      side: THREE.DoubleSide,
+      baseFloor: 0.56,
+      hemiWeight: 0.26,
+      sunWeight: 0.44,
     });
+    const shrubInst = new THREE.InstancedMesh(shrubGeo, shrubMat, bushSpots.length);
+    shrubInst.frustumCulled = false;
+    bushSpots.forEach((sp, i) => {
+      const s = 0.92 + (i % 3) * 0.14;
+      dummy.position.set(sp.x, 0, sp.z);
+      dummy.rotation.set(0, i * 0.9, 0);
+      dummy.scale.setScalar(s);
+      dummy.updateMatrix();
+      shrubInst.setMatrixAt(i, dummy.matrix);
+      this.physics.addStaticBox({ x: sp.x, y: 0.6, z: sp.z }, { x: 0.55 * s, y: 0.6, z: 0.55 * s }, null, {
+        material: 'wood',
+        kind: 'prop',
+        penetrable: true,
+      });
+      this._recordOccluder(sp.x, 0.6 * s, sp.z, 0.72 * s, 0.65 * s, 0.72 * s, 0, i * 0.9, 0, 'canopy');
+      this.staticShadowBlobs.push({ x: sp.x, y: 0.024, z: sp.z, sx: 2.0 * s, sz: 2.0 * s, ry: 0, opacity: 0.6 });
+    });
+    shrubInst.instanceMatrix.needsUpdate = true;
+    this.scene.add(shrubInst);
 
     // InstancedMesh Woodland Grass Tufts across unpaved yards & roadsides (1 draw call!)
     const bRects = [
@@ -1485,7 +1562,7 @@ export class VillageBuilder {
       { minX: -8.2, maxX: 8.2, minZ: -38.8, maxZ: -27.8 },
     ];
     const grassPlacements = [];
-    for (let i = 0; i < 360 && grassPlacements.length < 96; i++) {
+    for (let i = 0; i < 360 && grassPlacements.length < 64; i++) {
       const side = i % 2 === 0 ? -1 : 1;
       const x = side * (6.2 + ((i * 29) % 172) * 0.1);
       const z = -37 + ((i * 41) % 72);
@@ -1500,7 +1577,7 @@ export class VillageBuilder {
     }
     this._placeInstancedGltf(grassGltf, grassPlacements, {
       collide: false,
-      colorOverride: 0x456b32,
+      colorOverride: 0x627042,
     });
 
     // Woodland Mossy Granite Boulders batched into 1 InstancedMesh draw call (collided + contact blobs!)
@@ -1526,7 +1603,7 @@ export class VillageBuilder {
     const poleZs = [-23.5, -8.0, 10.5, 25.5];
     for (const px of poleXs) {
       for (const pz of poleZs) {
-        poleGeos.push(makeBoxGeo(0.22, 6.8, 0.22, px, 3.4, pz, 0, 0, 0, 0.25, 0.84, 1.0, true));
+        poleGeos.push(makeBoxGeo(0.22, 6.8, 0.22, px, 3.4, pz, 0, 0, 0, 0.25, 0.84, 1.0, false));
         poleGeos.push(makeBoxGeo(1.3, 0.1, 0.1, px, 6.4, pz, 0, 0, 0, 0.25, 0.88, 1.0));
         this.physics.addStaticBox({ x: px, y: 3.4, z: pz }, { x: 0.18, y: 3.4, z: 0.18 }, null, {
           material: 'wood',
@@ -1542,15 +1619,136 @@ export class VillageBuilder {
 
     // Distant overcast ruined industrial/town silhouettes outside the forest perimeter (Vertex GI!)
     const skyConcrete = [
-      makeBoxGeo(14, 15, 10, -48, 7.5, -44, 0, 0.2, 0, 0.25, 0.78, 1.0, true),
+      makeBoxGeo(14, 15, 10, -48, 7.5, -44, 0, 0.2, 0, 0.25, 0.78, 1.0, false),
       makeBoxGeo(7, 4, 8, -46, 16.5, -44, 0, 0.2, 0, 0.25, 0.85, 1.0),
-      makeBoxGeo(16, 18, 10, 12, 9, -62, 0, 0.08, 0, 0.25, 0.78, 1.0, true),
+      makeBoxGeo(16, 18, 10, 12, 9, -62, 0, 0.08, 0, 0.25, 0.78, 1.0, false),
       makeBoxGeo(8, 5, 9, 10, 20.5, -62, 0, 0.08, 0, 0.25, 0.85, 1.0),
-      makeBoxGeo(13, 12, 11, 46, 6, -34, 0, -0.25, 0, 0.25, 0.78, 1.0, true),
+      makeBoxGeo(13, 12, 11, 46, 6, -34, 0, -0.25, 0, 0.25, 0.78, 1.0, false),
     ];
-    const skylineMat = new THREE.MeshBasicMaterial({ map: this.mats.concrete.map, color: 0x6b747a, vertexColors: true });
+    const skylineMat = new THREE.MeshBasicMaterial({ map: this.mats.concrete.map, color: 0x6b7073, vertexColors: true });
     const skyline = new THREE.Mesh(mergeGeometries(skyConcrete, false), skylineMat);
     this.scene.add(this._registerGIMesh(skyline));
+  }
+
+  _buildWaterTowerAndFirePlume() {
+    // 1. Distant Steel Lattice Water Tower on the SW ridge (-29, z=45.5) silhouette against dusk sky
+    const towerGeos = [];
+    const wx = -28.5;
+    const wz = 45.0;
+    const baseY = 0.7;
+    const legH = 10.6;
+    const legs = [
+      [-1.35, -1.35, -0.75, -0.75],
+      [1.35, -1.35, 0.75, -0.75],
+      [1.35, 1.35, 0.75, 0.75],
+      [-1.35, 1.35, -0.75, 0.75],
+    ];
+    for (const [bx, bz, tx, tz] of legs) {
+      const len = Math.hypot(tx - bx, legH, tz - bz);
+      const leg = new THREE.CylinderGeometry(0.11, 0.14, len, 4, 1);
+      const dir = new THREE.Vector3(tx - bx, legH, tz - bz).normalize();
+      leg.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir));
+      leg.translate(wx + (bx + tx) * 0.5, baseY + legH * 0.5, wz + (bz + tz) * 0.5);
+      towerGeos.push(ensureFloatAttributes(leg));
+    }
+    // Horizontal brace collars & tank platform
+    towerGeos.push(makeBoxGeo(2.4, 0.14, 0.14, wx, baseY + 4.2, wz - 1.12, 0, 0, 0, 0.25, 0.85, 0.9, false));
+    towerGeos.push(makeBoxGeo(2.4, 0.14, 0.14, wx, baseY + 4.2, wz + 1.12, 0, 0, 0, 0.25, 0.85, 0.9, false));
+    towerGeos.push(makeBoxGeo(0.14, 0.14, 2.4, wx - 1.12, baseY + 4.2, wz, 0, 0, 0, 0.25, 0.85, 0.9, false));
+    towerGeos.push(makeBoxGeo(0.14, 0.14, 2.4, wx + 1.12, baseY + 4.2, wz, 0, 0, 0, 0.25, 0.85, 0.9, false));
+    towerGeos.push(makeBoxGeo(2.6, 0.24, 2.6, wx, baseY + legH, wz, 0, 0, 0, 0.25, 0.85, 1.0, false));
+    // Cylindrical steel water tank + conical cap
+    const tank = new THREE.CylinderGeometry(1.45, 1.45, 3.1, 8, 1);
+    tank.translate(wx, baseY + legH + 1.65, wz);
+    const cap = new THREE.ConeGeometry(1.62, 1.15, 8);
+    cap.translate(wx, baseY + legH + 3.78, wz);
+    towerGeos.push(ensureFloatAttributes(tank), ensureFloatAttributes(cap));
+
+    const mergedTower = mergeGeometries(
+      towerGeos.map((g) => {
+        if (!g.attributes.color) {
+          const cnt = g.attributes.position.count;
+          const cols = new Float32Array(cnt * 3).fill(1.0);
+          g.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+        }
+        return g;
+      }),
+      false
+    );
+    const waterTower = new THREE.Mesh(mergedTower, this.archMats.trimDark);
+    this.scene.add(this._registerGIMesh(waterTower));
+
+    // 2. Burning Roof Embers + Rising Dark Smoke Plume on House 0 (-12.2, z=18.5)
+    const fo = this._smokeOrigin;
+    const emberGeo = mergeGeometries(
+      [
+        makeBoxGeo(1.75, 0.95, 0.10, 0, 0.15, 0, 0, 0.3, 0, 1, 1, 1, false),
+        makeBoxGeo(1.75, 0.95, 0.10, 0, 0.15, 0, 0, -0.7, 0, 1, 1, 1, false),
+      ],
+      false
+    );
+    const emberMat = new THREE.MeshBasicMaterial({
+      color: 0xff8a24,
+      transparent: true,
+      opacity: 0.88,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this._fireEmbers = new THREE.Mesh(emberGeo, emberMat);
+    this._fireEmbers.position.set(fo.x, fo.y + 0.25, fo.z);
+    this.scene.add(this._fireEmbers);
+
+    if (this._smokeTexture) {
+      const smokeGeo = new THREE.PlaneGeometry(1, 1);
+      const smokeMat = new THREE.MeshBasicMaterial({
+        map: this._smokeTexture,
+        color: 0x564e48,
+        transparent: true,
+        opacity: 0.31,
+        depthWrite: false,
+      });
+      const puffCount = 15;
+      this._smokeInst = new THREE.InstancedMesh(smokeGeo, smokeMat, puffCount);
+      this._smokeInst.frustumCulled = false;
+      for (let i = 0; i < puffCount; i++) {
+        this._smokePuffs.push({
+          age: (i / puffCount) * 7.2,
+          life: 7.2,
+          seed: i * 1.43,
+        });
+      }
+      this.scene.add(this._smokeInst);
+    }
+  }
+
+  updateAtmosphere(dt, camera) {
+    this._fireTime += dt;
+    if (this._fireEmbers) {
+      const pulse = 0.78 + 0.22 * Math.sin(this._fireTime * 9.3) * Math.cos(this._fireTime * 5.7);
+      this._fireEmbers.scale.set(0.95 + pulse * 0.18, 0.88 + pulse * 0.34, 0.95 + pulse * 0.18);
+      this._fireEmbers.material.opacity = 0.68 + pulse * 0.28;
+    }
+    if (!this._smokeInst || !camera) return;
+    const d = this._smokeDummy;
+    const o = this._smokeOrigin;
+    for (let i = 0; i < this._smokePuffs.length; i++) {
+      const p = this._smokePuffs[i];
+      p.age += dt;
+      if (p.age >= p.life) p.age -= p.life;
+      const t = p.age / p.life;
+      const height = t * 14.5;
+      const driftX = -t * 5.2 + Math.sin(this._fireTime * 0.8 + p.seed) * 1.15 * t;
+      const driftZ = -t * 2.6 + Math.cos(this._fireTime * 0.6 + p.seed) * 0.85 * t;
+      const bell = Math.sin(t * Math.PI);
+      const scale = (2.1 + t * 6.8) * Math.min(1, bell * 1.9);
+      d.position.set(o.x + driftX, o.y + 0.5 + height, o.z + driftZ);
+      d.quaternion.copy(camera.quaternion);
+      d.rotateZ(p.seed + t * 0.85);
+      d.scale.set(scale, scale, 1);
+      d.updateMatrix();
+      this._smokeInst.setMatrixAt(i, d.matrix);
+    }
+    this._smokeInst.instanceMatrix.needsUpdate = true;
   }
 
   _buildRubbleInstances() {
@@ -1573,21 +1771,21 @@ export class VillageBuilder {
     };
 
     const valid = [];
-    for (let i = 0; i < 420 && valid.length < 180; i++) {
+    for (let i = 0; i < 420 && valid.length < 135; i++) {
       const side = i % 2 === 0 ? -1 : 1;
       const x = side * (4.6 + ((i * 37) % 185) * 0.1);
       const z = -37 + ((i * 53) % 72);
       if (isClear(x, z)) valid.push({ x, z, idx: i });
     }
 
-    const geo = new THREE.DodecahedronGeometry(0.22, 0);
+    const geo = new THREE.OctahedronGeometry(0.21, 0);
     const mesh = new THREE.InstancedMesh(geo, this.mats.concrete, valid.length);
 
     const dummy = new THREE.Object3D();
     valid.forEach((v, i) => {
       dummy.position.set(v.x, 0.08, v.z);
       dummy.rotation.set(v.idx * 0.7, v.idx * 1.3, v.idx * 0.5);
-      const s = 0.52 + ((v.idx * 19) % 10) * 0.10;
+      const s = 0.55 + ((v.idx * 19) % 10) * 0.10;
       dummy.scale.set(s * 1.45, s * 0.58, s);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);

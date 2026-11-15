@@ -156,7 +156,67 @@ function createMuzzleFlashTexture() {
   return tex;
 }
 
-function liftWeaponMaterial(mat, isHolo = false) {
+const _recoloredTexCache = new Map();
+
+function recolorAkmTexture(srcTex) {
+  if (!srcTex || !srcTex.image) return srcTex;
+  if (_recoloredTexCache.has(srcTex.uuid)) return _recoloredTexCache.get(srcTex.uuid);
+  const img = srcTex.image;
+  const w = img.width || img.naturalWidth || 0;
+  const h = img.height || img.naturalHeight || 0;
+  if (!w || !h) return srcTex;
+
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0, w, h);
+  const imgData = ctx.getImageData(0, 0, w, h);
+  const d = imgData.data;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = d[i];
+      const g = d[i + 1];
+      const b = d[i + 2];
+
+      // Remap bright orange wood pixels to deep oiled walnut with subtle grain
+      if (r > 72 && r > g * 1.15 && r > b * 1.50 && g >= b) {
+        const lum = (r * 0.30 + g * 0.59 + b * 0.11) / 255;
+        const grain = 0.88 + 0.14 * Math.sin(x * 0.42 + Math.sin(y * 0.14) * 2.8);
+        const shade = (0.48 + 0.62 * lum) * grain;
+        d[i] = Math.min(255, Math.max(24, Math.round(118 * shade)));
+        d[i + 1] = Math.min(255, Math.max(12, Math.round(58 * shade)));
+        d[i + 2] = Math.min(255, Math.max(6, Math.round(28 * shade)));
+      } else {
+        // Dark parkerized gunmetal: lift pitch black slightly, tame overly bright steel
+        const mx = Math.max(r, g, b);
+        if (mx < 30) {
+          d[i] = Math.min(255, r + 14);
+          d[i + 1] = Math.min(255, g + 16);
+          d[i + 2] = Math.min(255, b + 19);
+        } else if (mx > 135) {
+          d[i] = Math.round(r * 0.78);
+          d[i + 1] = Math.round(g * 0.79);
+          d[i + 2] = Math.round(b * 0.82);
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = srcTex.colorSpace || THREE.SRGBColorSpace;
+  tex.flipY = srcTex.flipY;
+  tex.wrapS = srcTex.wrapS;
+  tex.wrapT = srcTex.wrapT;
+  tex.needsUpdate = true;
+  _recoloredTexCache.set(srcTex.uuid, tex);
+  return tex;
+}
+
+function liftWeaponMaterial(mat, isHolo = false, weaponId = '') {
   const mName = mat.name?.toLowerCase() || '';
   if (isHolo && mName.includes('glass')) {
     return new THREE.MeshBasicMaterial({
@@ -166,6 +226,11 @@ function liftWeaponMaterial(mat, isHolo = false) {
       opacity: 0.16,
       depthWrite: false,
     });
+  }
+
+  let map = mat.map || null;
+  if (weaponId === 'akm' && map && !mName.includes('ammo')) {
+    map = recolorAkmTexture(map);
   }
 
   let col = mat.color ? mat.color.clone() : new THREE.Color(0xffffff);
@@ -180,11 +245,11 @@ function liftWeaponMaterial(mat, isHolo = false) {
 
   const out = createBakedLitBasicMaterial({
     color: col,
-    map: mat.map || null,
-    baseFloor: mat.map ? 0.62 : 0.44,
+    map,
+    baseFloor: map ? (weaponId === 'akm' ? 0.54 : 0.62) : 0.44,
     hemiWeight: 0.28,
     sunWeight: 0.44,
-    specBoost: mName.includes('wood') ? 0.05 : 0.18,
+    specBoost: mName.includes('wood') ? 0.06 : weaponId === 'akm' ? 0.22 : 0.18,
   });
   out.name = mat.name || '';
   return out;
@@ -515,8 +580,8 @@ export class WeaponSystem {
         c.frustumCulled = false;
         if (c.material) {
           c.material = Array.isArray(c.material)
-            ? c.material.map((m) => liftWeaponMaterial(m))
-            : liftWeaponMaterial(c.material);
+            ? c.material.map((m) => liftWeaponMaterial(m, false, id))
+            : liftWeaponMaterial(c.material, false, id);
         }
       }
     });
@@ -592,7 +657,7 @@ export class WeaponSystem {
     if (this.isReloading || st.mag >= def.magSize || st.reserve <= 0) return;
     this.isReloading = true;
     this.reloadTimer = def.reloadTime;
-    this.audio.playClip('reload', null, 0.78);
+    this.audio.playClip('reload', null, 0.94);
   }
 
   _finishReload() {
@@ -675,7 +740,7 @@ export class WeaponSystem {
         this._fireOnce(player, onHitEnemy, onHitMarker);
       } else if (this._emptyCooldown <= 0) {
         this._emptyCooldown = 0.25;
-        this.audio.playClip('empty_click', null, 0.65);
+        this.audio.playClip('empty_click', null, 0.82);
         if (st.reserve > 0) this.startReload();
       }
     } else if (!cmd.fire) {

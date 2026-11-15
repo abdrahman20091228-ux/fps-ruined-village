@@ -15,18 +15,18 @@ export class GameEngine {
     this.renderer.info.autoReset = false;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.06;
+    this.renderer.toneMappingExposure = 1.12;
     this.renderer.shadowMap.enabled = false;
     this.renderer.shadowMap.autoUpdate = false;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x8899a6);
-    this.scene.fog = new THREE.FogExp2(0x8899a6, 0.0082);
+    this.scene.background = new THREE.Color(0x8e7662);
+    this.scene.fog = new THREE.FogExp2(0x907864, 0.0074);
 
     this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.04, 185);
     this.scene.add(this.camera);
 
-    // Lightweight procedural overcast atmospheric sky gradient dome (0 dynamic lights, 0 PMREM cost)
+    // Lightweight procedural dusk sky dome (0 dynamic lights, 0 PMREM cost)
     this._initSkyDome();
 
     // Performance & pacing telemetry
@@ -78,17 +78,17 @@ export class GameEngine {
   }
 
   _initSkyDome() {
-    const geo = new THREE.SphereGeometry(64, 16, 10);
+    const geo = new THREE.SphereGeometry(68, 18, 10);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
-    const colZenith = new THREE.Color(0x526b84);
-    const colMid = new THREE.Color(0x8899a6);
-    const colHoriz = new THREE.Color(0xb8c5cf);
-    const colGround = new THREE.Color(0x6e7874);
+    const colZenith = new THREE.Color(0x3b536e);
+    const colMid = new THREE.Color(0x7c8692);
+    const colHoriz = new THREE.Color(0xcfa577);
+    const colGround = new THREE.Color(0x7c6e62);
     const tmp = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
-      const h = pos.getY(i) / 64; // -1 .. +1
+      const h = pos.getY(i) / 68;
       if (h >= 0.35) {
         tmp.copy(colMid).lerp(colZenith, (h - 0.35) / 0.65);
       } else if (h >= 0.0) {
@@ -111,6 +111,20 @@ export class GameEngine {
     this.skyDome = new THREE.Mesh(geo, mat);
     this.skyDome.renderOrder = -10;
     this.scene.add(this.skyDome);
+  }
+
+  setSkyTexture(tex) {
+    if (!this.skyDome || !tex) return;
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
+    });
+    this.skyDome.material?.dispose?.();
+    this.skyDome.material = mat;
+    // Align baked sun disc in sky_dusk.webp cleanly with (+22, 13, +24) golden-hour sun vector
+    this.skyDome.rotation.y = Math.PI * 0.476;
   }
 
   measureDisplayRefreshRate() {
