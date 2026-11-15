@@ -1,18 +1,18 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-15T12:52:04.879Z",
-  "totalBytes": 5125716,
-  "fileCount": 81,
+  "generatedAt": "2026-11-15T13:54:43.481Z",
+  "totalBytes": 4668202,
+  "fileCount": 88,
   "categories": {
-    "code": 426269,
+    "code": 443017,
     "models": 3390120,
-    "textures": 1139774,
+    "textures": 665512,
     "audio": 169553
   },
   "files": [
     {
       "path": "src/ai/enemySystem.js",
-      "size": 38209,
+      "size": 49436,
       "category": "code"
     },
     {
@@ -22,7 +22,7 @@
     },
     {
       "path": "src/core/assetLoader.js",
-      "size": 7660,
+      "size": 7661,
       "category": "code"
     },
     {
@@ -32,12 +32,12 @@
     },
     {
       "path": "src/core/engine.js",
-      "size": 8668,
+      "size": 8669,
       "category": "code"
     },
     {
       "path": "src/core/lightProbes.js",
-      "size": 6365,
+      "size": 10306,
       "category": "code"
     },
     {
@@ -47,17 +47,17 @@
     },
     {
       "path": "src/fx/effects.js",
-      "size": 8114,
+      "size": 8833,
       "category": "code"
     },
     {
       "path": "src/input/touchControls.js",
-      "size": 40658,
+      "size": 41135,
       "category": "code"
     },
     {
       "path": "src/main.js",
-      "size": 44620,
+      "size": 46115,
       "category": "code"
     },
     {
@@ -67,12 +67,12 @@
     },
     {
       "path": "src/styles.css",
-      "size": 30789,
+      "size": 32229,
       "category": "code"
     },
     {
       "path": "src/weapons/weapons.js",
-      "size": 29440,
+      "size": 40051,
       "category": "code"
     },
     {
@@ -82,7 +82,7 @@
     },
     {
       "path": "src/world/villageBuilder.js",
-      "size": 81780,
+      "size": 95676,
       "category": "code"
     },
     {
@@ -182,12 +182,12 @@
     },
     {
       "path": "assets/baked/light_probes.bin",
-      "size": 10788,
+      "size": 15396,
       "category": "code"
     },
     {
       "path": "assets/baked/world_vertex_gi.bin",
-      "size": 78865,
+      "size": 47197,
       "category": "code"
     },
     {
@@ -352,47 +352,77 @@
     },
     {
       "path": "assets/textures/asphalt.webp",
-      "size": 94000,
+      "size": 58090,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/bark.webp",
+      "size": 86342,
       "category": "textures"
     },
     {
       "path": "assets/textures/brick.webp",
-      "size": 335336,
+      "size": 61112,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/camo_fabric.webp",
+      "size": 15970,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/cliff_rock.webp",
+      "size": 53814,
       "category": "textures"
     },
     {
       "path": "assets/textures/concrete.webp",
-      "size": 290320,
+      "size": 25926,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/corrugated_metal.webp",
+      "size": 9244,
       "category": "textures"
     },
     {
       "path": "assets/textures/dirt.webp",
-      "size": 109558,
+      "size": 47508,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/glove_leather.webp",
+      "size": 13514,
+      "category": "textures"
+    },
+    {
+      "path": "assets/textures/gunmetal_detail.webp",
+      "size": 6456,
       "category": "textures"
     },
     {
       "path": "assets/textures/leaf_cluster.webp",
-      "size": 7068,
+      "size": 19506,
       "category": "textures"
     },
     {
       "path": "assets/textures/lightmap_ground.webp",
-      "size": 32570,
+      "size": 30584,
       "category": "textures"
     },
     {
       "path": "assets/textures/metal.webp",
-      "size": 64070,
+      "size": 29692,
       "category": "textures"
     },
     {
       "path": "assets/textures/plaster.webp",
-      "size": 83564,
+      "size": 85440,
       "category": "textures"
     },
     {
       "path": "assets/textures/roof_tiles.webp",
-      "size": 60304,
+      "size": 34066,
       "category": "textures"
     },
     {
@@ -402,7 +432,7 @@
     },
     {
       "path": "assets/textures/sky_dusk.webp",
-      "size": 9746,
+      "size": 7434,
       "category": "textures"
     },
     {
@@ -411,8 +441,13 @@
       "category": "textures"
     },
     {
+      "path": "assets/textures/terracotta.webp",
+      "size": 55372,
+      "category": "textures"
+    },
+    {
       "path": "assets/textures/wood.webp",
-      "size": 48732,
+      "size": 20936,
       "category": "textures"
     }
   ]

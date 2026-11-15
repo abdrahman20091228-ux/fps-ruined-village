@@ -20,10 +20,10 @@ export class GameEngine {
     this.renderer.shadowMap.autoUpdate = false;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x8e7662);
-    this.scene.fog = new THREE.FogExp2(0x907864, 0.0074);
+    this.scene.background = new THREE.Color(0x9a826c);
+    this.scene.fog = new THREE.FogExp2(0x9a826c, 0.0058);
 
-    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.04, 185);
+    this.camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.035, 225);
     this.scene.add(this.camera);
 
     // Lightweight procedural dusk sky dome (0 dynamic lights, 0 PMREM cost)
@@ -78,7 +78,7 @@ export class GameEngine {
   }
 
   _initSkyDome() {
-    const geo = new THREE.SphereGeometry(68, 18, 10);
+    const geo = new THREE.SphereGeometry(96, 18, 10);
     const pos = geo.attributes.position;
     const colors = new Float32Array(pos.count * 3);
     const colZenith = new THREE.Color(0x3b536e);
@@ -88,7 +88,7 @@ export class GameEngine {
     const tmp = new THREE.Color();
 
     for (let i = 0; i < pos.count; i++) {
-      const h = pos.getY(i) / 68;
+      const h = pos.getY(i) / 96;
       if (h >= 0.35) {
         tmp.copy(colMid).lerp(colZenith, (h - 0.35) / 0.65);
       } else if (h >= 0.0) {

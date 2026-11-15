@@ -200,10 +200,10 @@ export class InputManager {
   async _requestGyroPermissionIfNeeded() {
     if (this._gyroPermissionAsked) return;
     this._gyroPermissionAsked = true;
+    let granted = false;
     try {
-      let granted = false;
       if (typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function') {
-        const res = await DeviceMotionEvent.requestPermission();
+        const res = await DeviceMotionEvent.requestPermission().catch(() => 'denied');
         if (res === 'granted') granted = true;
       } else {
         granted = true;
@@ -212,9 +212,11 @@ export class InputManager {
         const res = await DeviceOrientationEvent.requestPermission().catch(() => 'denied');
         if (res === 'granted') granted = true;
       }
-      if (granted) this._attachGyroListener();
     } catch {
       // Ignore if rejected or unsupported
+    }
+    if (granted || 'Gyroscope' in window || 'RelativeOrientationSensor' in window) {
+      this._attachGyroListener();
     }
   }
 
@@ -316,9 +318,11 @@ export class InputManager {
           ry -= this._biasY;
 
           // Tiny noise gate
+          // Screen-frame Gyroscope uses right-hand rule (+X = pitch top toward user = look UP, +Y = turn LEFT).
+          // FPS camera applies player.yaw -= lookDX (right is +lookDX) and player.pitch -= lookDY (up is -lookDY).
           const dz = 0.004;
-          const cleanPitch = Math.abs(rx) < dz ? 0 : rx - Math.sign(rx) * dz;
-          const cleanYaw = Math.abs(ry) < dz ? 0 : ry - Math.sign(ry) * dz;
+          const cleanPitch = Math.abs(rx) < dz ? 0 : -(rx - Math.sign(rx) * dz);
+          const cleanYaw = Math.abs(ry) < dz ? 0 : -(ry - Math.sign(ry) * dz);
 
           const invX = this.settings.gyroInvertX ? -1 : 1;
           const invY = this.settings.gyroInvertY ? -1 : 1;
@@ -480,12 +484,14 @@ export class InputManager {
       let rawPitchDegPerSec = 0;
 
       // W3C spec: alpha=around Z(normal), beta=around X(short), gamma=around Y(long)
+      // Transform device-frame rate into negated screen-frame rate so:
+      // +Yaw = turn right (lookDX > 0), -Pitch = look up (lookDY < 0).
       if (angle === 90) {
         rawYawDegPerSec = -rr.beta;
-        rawPitchDegPerSec = -rr.gamma;
+        rawPitchDegPerSec = rr.gamma;
       } else if (angle === 270) {
         rawYawDegPerSec = rr.beta;
-        rawPitchDegPerSec = rr.gamma;
+        rawPitchDegPerSec = -rr.gamma;
       } else if (angle === 180) {
         rawYawDegPerSec = rr.gamma;
         rawPitchDegPerSec = rr.beta;

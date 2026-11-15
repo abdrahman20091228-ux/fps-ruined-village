@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
-import { createBakedLitBasicMaterial } from '../core/lightProbes.js';
+import { createBakedLitBasicMaterial, ensureBoxProjectedUVs } from '../core/lightProbes.js';
 
 export const WEAPON_DEFS = {
   pistol: {
@@ -13,18 +13,18 @@ export const WEAPON_DEFS = {
     reserveMax: 90,
     reloadTime: 1.2,
     penetration: 0.30,
-    adsFov: 60,
-    spreadBase: 0.003,
+    adsFov: 58,
+    spreadBase: 0.0028,
     spreadMove: 0.013,
     recoilPattern: [
-      { p: 0.020, y: 0.003 },
-      { p: 0.023, y: -0.003 },
-      { p: 0.025, y: 0.004 },
+      { p: 0.019, y: 0.003 },
+      { p: 0.022, y: -0.003 },
+      { p: 0.024, y: 0.004 },
     ],
-    hipPos: new THREE.Vector3(0.145, -0.092, -0.29),
-    adsPos: new THREE.Vector3(0.0, -0.0938, -0.23),
-    hipYaw: 0.05,
-    muzzleLocal: new THREE.Vector3(0, 0.055, -0.14),
+    hipPos: new THREE.Vector3(0.148, -0.095, -0.295),
+    adsPos: new THREE.Vector3(0.0, -0.0938, -0.232),
+    hipYaw: 0.048,
+    muzzleLocal: new THREE.Vector3(0, 0.058, -0.14),
     ejectLocal: new THREE.Vector3(0.02, 0.06, -0.02),
   },
   akm: {
@@ -37,21 +37,21 @@ export const WEAPON_DEFS = {
     reserveMax: 120,
     reloadTime: 1.8,
     penetration: 0.65,
-    adsFov: 52,
-    spreadBase: 0.0045,
-    spreadMove: 0.021,
+    adsFov: 51,
+    spreadBase: 0.0042,
+    spreadMove: 0.020,
     recoilPattern: [
-      { p: 0.023, y: 0.003 },
-      { p: 0.028, y: 0.006 },
-      { p: 0.030, y: -0.005 },
-      { p: 0.033, y: 0.008 },
-      { p: 0.029, y: -0.008 },
-      { p: 0.034, y: 0.010 },
+      { p: 0.022, y: 0.003 },
+      { p: 0.027, y: 0.006 },
+      { p: 0.029, y: -0.005 },
+      { p: 0.032, y: 0.008 },
+      { p: 0.028, y: -0.008 },
+      { p: 0.033, y: 0.009 },
     ],
-    hipPos: new THREE.Vector3(0.165, -0.098, -0.33),
-    adsPos: new THREE.Vector3(0.0, -0.0745, -0.22),
-    hipYaw: 0.05,
-    muzzleLocal: new THREE.Vector3(0, 0.017, -0.42),
+    hipPos: new THREE.Vector3(0.165, -0.102, -0.335),
+    adsPos: new THREE.Vector3(0.0, -0.0745, -0.220),
+    hipYaw: 0.052,
+    muzzleLocal: new THREE.Vector3(0, 0.018, -0.42),
     ejectLocal: new THREE.Vector3(0.03, 0.04, -0.02),
   },
   m4: {
@@ -64,19 +64,19 @@ export const WEAPON_DEFS = {
     reserveMax: 150,
     reloadTime: 1.45,
     penetration: 0.52,
-    adsFov: 50,
-    spreadBase: 0.0026,
-    spreadMove: 0.015,
+    adsFov: 46,
+    spreadBase: 0.0024,
+    spreadMove: 0.014,
     recoilPattern: [
-      { p: 0.015, y: 0.002 },
+      { p: 0.014, y: 0.002 },
+      { p: 0.017, y: -0.003 },
+      { p: 0.019, y: 0.003 },
       { p: 0.018, y: -0.003 },
-      { p: 0.020, y: 0.003 },
-      { p: 0.019, y: -0.003 },
-      { p: 0.021, y: 0.002 },
+      { p: 0.020, y: 0.002 },
     ],
-    hipPos: new THREE.Vector3(0.155, -0.068, -0.355),
-    adsPos: new THREE.Vector3(0.0, -0.0485, -0.235),
-    hipYaw: 0.085,
+    hipPos: new THREE.Vector3(0.155, -0.072, -0.355),
+    adsPos: new THREE.Vector3(0.0, -0.0485, -0.228),
+    hipYaw: 0.075,
     muzzleLocal: new THREE.Vector3(0, 0.016, -0.34),
     ejectLocal: new THREE.Vector3(0.03, 0.03, -0.01),
   },
@@ -86,35 +86,42 @@ const ORDER = ['m4', 'akm', 'pistol'];
 
 function createHoloReticleTexture() {
   const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 128;
+  c.width = 256;
+  c.height = 256;
   const ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, 128, 128);
-  ctx.strokeStyle = 'rgba(255, 72, 54, 0.95)';
-  ctx.fillStyle = 'rgba(255, 92, 68, 1)';
-  ctx.shadowColor = 'rgba(255, 60, 40, 0.9)';
-  ctx.shadowBlur = 8;
+  ctx.clearRect(0, 0, 256, 256);
 
-  // Segmented EOTech outer ring with cardinal hash marks
-  ctx.lineWidth = 4;
+  // Subtle EOTech holographic red-amber emission halo + razor-sharp 65 MOA circle
+  ctx.strokeStyle = 'rgba(255, 76, 52, 0.94)';
+  ctx.fillStyle = 'rgba(255, 118, 86, 1)';
+  ctx.shadowColor = 'rgba(255, 58, 36, 0.95)';
+  ctx.shadowBlur = 12;
+
+  ctx.lineWidth = 5.5;
   for (let i = 0; i < 4; i++) {
-    const a0 = i * Math.PI * 0.5 + 0.22;
-    const a1 = (i + 1) * Math.PI * 0.5 - 0.22;
+    const a0 = i * Math.PI * 0.5 + 0.24;
+    const a1 = (i + 1) * Math.PI * 0.5 - 0.24;
     ctx.beginPath();
-    ctx.arc(64, 64, 34, a0, a1);
+    ctx.arc(128, 128, 68, a0, a1);
     ctx.stroke();
   }
-  ctx.lineWidth = 3.5;
+
+  // Cardinal inner+outer stadia ticks (CODM / Delta Force reflex precision)
+  ctx.lineWidth = 4.5;
   ctx.beginPath();
-  ctx.moveTo(64, 18); ctx.lineTo(64, 30);
-  ctx.moveTo(64, 98); ctx.lineTo(64, 110);
-  ctx.moveTo(18, 64); ctx.lineTo(30, 64);
-  ctx.moveTo(98, 64); ctx.lineTo(110, 64);
+  ctx.moveTo(128, 34); ctx.lineTo(128, 62);
+  ctx.moveTo(128, 194); ctx.lineTo(128, 222);
+  ctx.moveTo(34, 128); ctx.lineTo(62, 128);
+  ctx.moveTo(194, 128); ctx.lineTo(222, 128);
   ctx.stroke();
 
-  // Crisp center 2 MOA dot
+  // Inner subtle dot + bright hot core
   ctx.beginPath();
-  ctx.arc(64, 64, 4.2, 0, Math.PI * 2);
+  ctx.arc(128, 128, 6.2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255, 232, 200, 1)';
+  ctx.beginPath();
+  ctx.arc(128, 128, 2.8, 0, Math.PI * 2);
   ctx.fill();
 
   const tex = new THREE.CanvasTexture(c);
@@ -130,23 +137,22 @@ function createMuzzleFlashTexture() {
   ctx.clearRect(0, 0, 128, 128);
 
   const grad = ctx.createRadialGradient(64, 64, 2, 64, 64, 60);
-  grad.addColorStop(0.0, 'rgba(255, 252, 230, 1.0)');
-  grad.addColorStop(0.22, 'rgba(255, 212, 118, 0.92)');
-  grad.addColorStop(0.55, 'rgba(255, 138, 42, 0.35)');
-  grad.addColorStop(1.0, 'rgba(255, 90, 20, 0.0)');
+  grad.addColorStop(0.0, 'rgba(255, 254, 232, 1.0)');
+  grad.addColorStop(0.24, 'rgba(255, 222, 92, 0.96)');
+  grad.addColorStop(0.56, 'rgba(255, 148, 34, 0.45)');
+  grad.addColorStop(1.0, 'rgba(255, 86, 16, 0.0)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, 128, 128);
 
-  // 4-point gas port spikes
-  ctx.fillStyle = 'rgba(255, 236, 175, 0.85)';
-  for (let i = 0; i < 4; i++) {
+  ctx.fillStyle = 'rgba(255, 244, 170, 0.94)';
+  for (let i = 0; i < 6; i++) {
     ctx.save();
     ctx.translate(64, 64);
-    ctx.rotate((i * Math.PI) / 2);
+    ctx.rotate((i * Math.PI) / 3);
     ctx.beginPath();
-    ctx.moveTo(0, -4);
-    ctx.lineTo(54, 0);
-    ctx.lineTo(0, 4);
+    ctx.moveTo(0, -4.5);
+    ctx.lineTo(58, 0);
+    ctx.lineTo(0, 4.5);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
@@ -181,25 +187,23 @@ function recolorAkmTexture(srcTex) {
       const g = d[i + 1];
       const b = d[i + 2];
 
-      // Remap bright orange wood pixels to deep oiled walnut with subtle grain
       if (r > 72 && r > g * 1.15 && r > b * 1.50 && g >= b) {
         const lum = (r * 0.30 + g * 0.59 + b * 0.11) / 255;
         const grain = 0.88 + 0.14 * Math.sin(x * 0.42 + Math.sin(y * 0.14) * 2.8);
-        const shade = (0.48 + 0.62 * lum) * grain;
-        d[i] = Math.min(255, Math.max(24, Math.round(118 * shade)));
-        d[i + 1] = Math.min(255, Math.max(12, Math.round(58 * shade)));
+        const shade = (0.50 + 0.62 * lum) * grain;
+        d[i] = Math.min(255, Math.max(24, Math.round(124 * shade)));
+        d[i + 1] = Math.min(255, Math.max(12, Math.round(62 * shade)));
         d[i + 2] = Math.min(255, Math.max(6, Math.round(28 * shade)));
       } else {
-        // Dark parkerized gunmetal: lift pitch black slightly, tame overly bright steel
         const mx = Math.max(r, g, b);
         if (mx < 30) {
-          d[i] = Math.min(255, r + 14);
-          d[i + 1] = Math.min(255, g + 16);
-          d[i + 2] = Math.min(255, b + 19);
+          d[i] = Math.min(255, r + 15);
+          d[i + 1] = Math.min(255, g + 17);
+          d[i + 2] = Math.min(255, b + 20);
         } else if (mx > 135) {
-          d[i] = Math.round(r * 0.78);
-          d[i + 1] = Math.round(g * 0.79);
-          d[i + 2] = Math.round(b * 0.82);
+          d[i] = Math.round(r * 0.80);
+          d[i + 1] = Math.round(g * 0.81);
+          d[i + 2] = Math.round(b * 0.84);
         }
       }
     }
@@ -216,14 +220,14 @@ function recolorAkmTexture(srcTex) {
   return tex;
 }
 
-function liftWeaponMaterial(mat, isHolo = false, weaponId = '') {
+function liftWeaponMaterial(mat, isHolo = false, weaponId = '', texLib = {}) {
   const mName = mat.name?.toLowerCase() || '';
   if (isHolo && mName.includes('glass')) {
     return new THREE.MeshBasicMaterial({
       name: mat.name || '',
-      color: 0x8bc2d4,
+      color: 0x78cce0,
       transparent: true,
-      opacity: 0.16,
+      opacity: 0.14,
       depthWrite: false,
     });
   }
@@ -234,52 +238,71 @@ function liftWeaponMaterial(mat, isHolo = false, weaponId = '') {
   }
 
   let col = mat.color ? mat.color.clone() : new THREE.Color(0xffffff);
-  const lum = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
-  if (isHolo && !mName.includes('red')) {
-    col.setHex(0x30363f);
-  } else if (lum < 0.08) {
-    col.setHex(0x282d34);
-  } else if (lum < 0.16) {
-    col.offsetHSL(0, 0, 0.04);
+  if (!map) {
+    // Dress untextured flat weapon materials with crisp CC0 brushed gunmetal / walnut maps
+    if (mName.includes('chestnut') || mName.includes('wood')) {
+      map = texLib.wood || null;
+      col.setHex(0xb88254);
+    } else if (mName.includes('brass') || mName.includes('yellow')) {
+      map = texLib.gunmetal || null;
+      col.setHex(0xd4b464);
+    } else if (mName.includes('white')) {
+      map = texLib.gunmetal || null;
+      col.setHex(0x8c949c);
+    } else {
+      map = texLib.gunmetal || null;
+      const lum = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+      if (isHolo && !mName.includes('red')) {
+        col.setHex(0x525862);
+      } else if (lum < 0.14) {
+        col.setHex(0x565d67);
+      } else {
+        col.lerp(new THREE.Color(0x6c737d), 0.45);
+      }
+    }
+  } else {
+    const lum = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+    if (lum < 0.35) col.lerp(new THREE.Color(0xb8bfc8), 0.50);
   }
 
   const out = createBakedLitBasicMaterial({
     color: col,
     map,
-    baseFloor: map ? (weaponId === 'akm' ? 0.54 : 0.62) : 0.44,
+    baseFloor: map ? (weaponId === 'akm' ? 0.60 : 0.62) : 0.54,
     hemiWeight: 0.28,
-    sunWeight: 0.44,
-    specBoost: mName.includes('wood') ? 0.06 : weaponId === 'akm' ? 0.22 : 0.18,
+    sunWeight: 0.48,
+    specBoost: mName.includes('wood') || mName.includes('chestnut') ? 0.08 : 0.28,
   });
   out.name = mat.name || '';
   return out;
 }
 
-function createHoloOptic(holoScene, reticleTex) {
+function createHoloOptic(holoScene, reticleTex, texLib) {
   const grp = new THREE.Group();
   const riserMat = createBakedLitBasicMaterial({
-    color: 0x242930,
-    baseFloor: 0.44,
+    color: 0x4c525c,
+    map: texLib.gunmetal || null,
+    baseFloor: 0.58,
     hemiWeight: 0.28,
-    sunWeight: 0.44,
-    specBoost: 0.18,
+    sunWeight: 0.46,
+    specBoost: 0.26,
   });
-  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.005, 0.044), riserMat);
+  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.005, 0.046), riserMat);
   riser.position.set(0, -0.001, 0.002);
   grp.add(riser);
 
   if (holoScene) {
     const hClone = holoScene.clone(true);
-    hClone.scale.setScalar(0.54);
-    hClone.position.set(0.0012, 0, 0); // Center asymmetric model bounds cleanly on X = 0
+    hClone.scale.setScalar(0.56);
+    hClone.position.set(0.0012, 0, 0);
     hClone.traverse((c) => {
       if (c.isMesh) {
         c.frustumCulled = false;
+        ensureBoxProjectedUVs(c.geometry, 12.0);
         if (c.material) {
-          c.material = liftWeaponMaterial(c.material, true);
+          c.material = liftWeaponMaterial(c.material, true, 'holo', texLib);
           const mName = c.material.name?.toLowerCase() || '';
           if (mName.includes('red')) {
-            // Suppress baked inner-mesh reticle so only our crisp EOTech HUD reticle renders
             c.visible = false;
           }
         }
@@ -293,88 +316,215 @@ function createHoloOptic(holoScene, reticleTex) {
     grp.add(base, hoodTop);
   }
 
-  // Crisp glowing holographic reticle plane centered cleanly in the Holo window (0.032 + 0.0165 = 0.0485)
+  // Subtle upper anti-glare brow rim highlight + collimated holographic EOTech reticle
   const reticlePlane = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.009, 0.009),
+    new THREE.PlaneGeometry(0.0115, 0.0115),
     new THREE.MeshBasicMaterial({
       map: reticleTex,
       transparent: true,
-      opacity: 0.96,
+      opacity: 0.98,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       depthTest: false,
     })
   );
-  reticlePlane.position.set(0, 0.0165, 0.0);
+  reticlePlane.position.set(0, 0.0168, -0.004);
   reticlePlane.renderOrder = 10;
   grp.add(reticlePlane);
 
   grp.position.set(0, 0.032, -0.008);
+  grp.userData.reticlePlane = reticlePlane;
   return grp;
 }
 
-function createTacticalHands(id) {
+/**
+ * Builds sculpted, anatomical low-poly tactical first-person arms & gloved hands
+ * with 5 articulated multi-joint curling fingers per hand (~420 tris total, 0 primitive bricks).
+ */
+function createTacticalHands(id, texLib = {}) {
   const grp = new THREE.Group();
-  const sleeveMat = createBakedLitBasicMaterial({ color: 0x454f3b, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.03 });
-  const cuffMat = createBakedLitBasicMaterial({ color: 0x353c30, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.03 });
-  const gloveMat = createBakedLitBasicMaterial({ color: 0x2b3038, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.05 });
-  const knuckleMat = createBakedLitBasicMaterial({ color: 0x444b56, baseFloor: 0.48, hemiWeight: 0.26, sunWeight: 0.38, specBoost: 0.08 });
 
-  const addArticulatedArm = (palmPos, elbowPos, gripEuler, isLeft) => {
+  const sleeveMat = createBakedLitBasicMaterial({
+    map: texLib.camo || null,
+    color: texLib.camo ? 0xbbc4aa : 0x525e46,
+    baseFloor: 0.60,
+    hemiWeight: 0.30,
+    sunWeight: 0.44,
+    specBoost: 0.04,
+  });
+  const cuffMat = createBakedLitBasicMaterial({
+    map: texLib.glove || null,
+    color: 0x62685e,
+    baseFloor: 0.60,
+    hemiWeight: 0.28,
+    sunWeight: 0.42,
+    specBoost: 0.06,
+  });
+  const gloveMat = createBakedLitBasicMaterial({
+    map: texLib.glove || null,
+    color: texLib.glove ? 0x8d8272 : 0x544f47,
+    baseFloor: 0.62,
+    hemiWeight: 0.28,
+    sunWeight: 0.44,
+    specBoost: 0.12,
+  });
+  const knuckleMat = createBakedLitBasicMaterial({
+    map: texLib.gunmetal || null,
+    color: 0x4b515a,
+    baseFloor: 0.60,
+    hemiWeight: 0.28,
+    sunWeight: 0.44,
+    specBoost: 0.22,
+  });
+  const watchFaceMat = new THREE.MeshBasicMaterial({ color: 0x1e3628 });
+
+  // Sculpted tapered palm profile (rounded back of hand + ergonomic wrist taper)
+  const palmGeo = new THREE.CylinderGeometry(0.022, 0.019, 0.056, 8, 1);
+  palmGeo.rotateX(Math.PI / 2);
+  palmGeo.scale(1.16, 0.66, 1.0);
+
+  const phalanxProxGeo = new THREE.CapsuleGeometry(0.0052, 0.017, 2, 6);
+  const phalanxDistGeo = new THREE.CapsuleGeometry(0.0044, 0.015, 2, 6);
+  const thumbProxGeo = new THREE.CapsuleGeometry(0.0060, 0.018, 2, 6);
+  const sleeveGeo = new THREE.CylinderGeometry(0.027, 0.038, 1.0, 9, 2);
+
+  const addFinger = (parent, x, y, z, yaw, pitch1, pitch2, scale = 1.0) => {
+    const fRoot = new THREE.Group();
+    fRoot.position.set(x, y, z);
+    fRoot.rotation.set(pitch1, yaw, 0);
+    fRoot.scale.setScalar(scale);
+
+    const prox = new THREE.Mesh(phalanxProxGeo, gloveMat);
+    prox.position.set(0, -0.011, 0);
+    fRoot.add(prox);
+
+    const joint = new THREE.Group();
+    joint.position.set(0, -0.022, 0);
+    joint.rotation.x = pitch2;
+    const dist = new THREE.Mesh(phalanxDistGeo, gloveMat);
+    dist.position.set(0, -0.010, 0);
+    joint.add(dist);
+
+    fRoot.add(joint);
+    parent.add(fRoot);
+    return fRoot;
+  };
+
+  const addArticulatedArm = (palmPos, elbowPos, gripEuler, isLeft, gripPose = 'rifle_handguard') => {
+    const armAssembly = new THREE.Group();
     const handGrp = new THREE.Group();
     handGrp.position.copy(palmPos);
     handGrp.rotation.set(gripEuler[0], gripEuler[1], gripEuler[2]);
 
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.028, 0.050), gloveMat);
-    const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.011, 0.024), knuckleMat);
-    knuckle.position.set(0, 0.013, -0.008);
+    const palm = new THREE.Mesh(palmGeo, gloveMat);
+    handGrp.add(palm);
 
-    const fingers = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.020, 0.026), gloveMat);
-    fingers.position.set(isLeft ? 0.011 : -0.011, -0.011, -0.013);
-    const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.015, 0.032), gloveMat);
-    thumb.position.set(isLeft ? -0.019 : 0.019, 0.011, -0.013);
+    // Carbon-fiber armored knuckle guard curved across dorsum
+    const knuckle = new THREE.Mesh(new THREE.CylinderGeometry(0.0065, 0.0065, 0.039, 6), knuckleMat);
+    knuckle.rotation.z = Math.PI / 2;
+    knuckle.position.set(0, 0.0105, -0.015);
+    handGrp.add(knuckle);
 
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.024, 0.025, 8), cuffMat);
+    // Wrist tactical cuff + Velcro watch strap (left wrist features rugged field watch!)
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.027, 0.032, 8), cuffMat);
     cuff.rotation.x = Math.PI / 2;
-    cuff.position.set(0, -0.002, 0.036);
+    cuff.position.set(0, -0.002, 0.034);
+    handGrp.add(cuff);
 
-    handGrp.add(palm, knuckle, fingers, thumb, cuff);
-    grp.add(handGrp);
+    if (isLeft) {
+      const watchCase = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.0095, 0.006, 8), knuckleMat);
+      watchCase.position.set(0, 0.022, 0.036);
+      const watchDial = new THREE.Mesh(new THREE.CircleGeometry(0.007, 8), watchFaceMat);
+      watchDial.rotation.x = -Math.PI / 2;
+      watchDial.position.set(0, 0.0255, 0.036);
+      handGrp.add(watchCase, watchDial);
+    }
 
-    const wristW = palmPos.clone().add(new THREE.Vector3(0, -0.004, 0.040));
+    // 4 Articulated fingers + opposable thumb posed naturally to grip weapon
+    const sideDir = isLeft ? 1 : -1;
+    if (gripPose === 'pistol_grip') {
+      // Trigger-ready right hand: index extended along frame, 3 fingers curled tight around grip
+      const idxF = addFinger(handGrp, sideDir * 0.014, 0.002, -0.028, sideDir * 0.08, -1.25, -0.35, 0.96);
+      addFinger(handGrp, sideDir * 0.004, -0.002, -0.028, sideDir * 0.05, -0.65, -1.22, 1.0);
+      addFinger(handGrp, -sideDir * 0.006, -0.003, -0.026, 0.0, -0.60, -1.28, 0.94);
+      addFinger(handGrp, -sideDir * 0.015, -0.004, -0.022, -sideDir * 0.08, -0.55, -1.25, 0.84);
+      // Thumb wraps high across backstrap/receiver
+      const thumb = new THREE.Mesh(thumbProxGeo, gloveMat);
+      thumb.position.set(-sideDir * 0.019, 0.008, -0.012);
+      thumb.rotation.set(-0.95, sideDir * 0.45, -sideDir * 0.55);
+      handGrp.add(thumb);
+      handGrp.userData.triggerFinger = idxF;
+    } else {
+      // Left C-clamp / forend cradle grip or pistol support cup
+      const spread = gripPose === 'pistol_support' ? 0.06 : 0.12;
+      for (let fi = 0; fi < 4; fi++) {
+        const zOff = -0.027 + fi * 0.003;
+        const xOff = sideDir * (0.014 - fi * 0.0095);
+        addFinger(
+          handGrp,
+          xOff,
+          -0.001 - fi * 0.001,
+          zOff,
+          sideDir * spread * (1.5 - fi),
+          -0.68 - fi * 0.04,
+          -1.16,
+          1.0 - fi * 0.05
+        );
+      }
+      const thumb = new THREE.Mesh(thumbProxGeo, gloveMat);
+      thumb.position.set(-sideDir * 0.021, 0.011, -0.013);
+      thumb.rotation.set(-1.12, sideDir * 0.35, -sideDir * 0.65);
+      handGrp.add(thumb);
+    }
+
+    armAssembly.add(handGrp);
+
+    // Sculpted forearm sleeve curving naturally from shoulder/elbow edge into wrist cuff
+    const wristW = palmPos.clone().add(new THREE.Vector3(0, -0.003, 0.042));
     const armDir = new THREE.Vector3().subVectors(elbowPos, wristW);
     const len = armDir.length();
-    const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.023, 0.030, len, 8), sleeveMat);
+    const forearm = new THREE.Mesh(sleeveGeo, sleeveMat);
+    forearm.scale.set(1, len, 0.88);
     forearm.position.copy(wristW).addScaledVector(armDir, 0.5);
     forearm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), armDir.normalize());
-    grp.add(forearm);
+    armAssembly.add(forearm);
+
+    grp.add(armAssembly);
+    return armAssembly;
   };
 
+  let rightArm = null;
+  let leftArm = null;
+
   if (id === 'pistol') {
-    addArticulatedArm(
-      new THREE.Vector3(0.004, -0.056, 0.015),
-      new THREE.Vector3(0.18, -0.24, 0.28),
-      [0.25, 0, -0.1],
-      false
+    rightArm = addArticulatedArm(
+      new THREE.Vector3(0.004, -0.055, 0.014),
+      new THREE.Vector3(0.185, -0.245, 0.285),
+      [0.24, 0.0, -0.10],
+      false,
+      'pistol_grip'
     );
-    addArticulatedArm(
-      new THREE.Vector3(-0.018, -0.066, 0.002),
-      new THREE.Vector3(-0.24, -0.26, 0.25),
-      [0.2, 0.25, 0.15],
-      true
+    leftArm = addArticulatedArm(
+      new THREE.Vector3(-0.020, -0.066, 0.000),
+      new THREE.Vector3(-0.245, -0.265, 0.255),
+      [0.20, 0.26, 0.16],
+      true,
+      'pistol_support'
     );
   } else {
-    addArticulatedArm(
-      new THREE.Vector3(0.004, -0.065, 0.095),
-      new THREE.Vector3(0.18, -0.25, 0.34),
-      [0.30, 0, -0.08],
-      false
+    rightArm = addArticulatedArm(
+      new THREE.Vector3(0.005, -0.064, 0.092),
+      new THREE.Vector3(0.188, -0.255, 0.345),
+      [0.28, 0.0, -0.09],
+      false,
+      'pistol_grip'
     );
-    addArticulatedArm(
-      new THREE.Vector3(-0.018, -0.042, -0.135),
-      new THREE.Vector3(-0.24, -0.25, 0.04),
+    leftArm = addArticulatedArm(
+      new THREE.Vector3(-0.019, -0.042, id === 'akm' ? -0.145 : -0.132),
+      new THREE.Vector3(-0.245, -0.252, 0.045),
       [0.06, -0.10, 0.32],
-      true
+      true,
+      'rifle_handguard'
     );
   }
 
@@ -385,6 +535,8 @@ function createTacticalHands(id) {
       c.frustumCulled = false;
     }
   });
+  grp.userData.leftArm = leftArm;
+  grp.userData.rightArm = rightArm;
   return grp;
 }
 
@@ -401,11 +553,14 @@ export class WeaponSystem {
 
     this._reticleTex = createHoloReticleTexture();
     this._muzzleTex = createMuzzleFlashTexture();
+    this._texLib = {};
 
     this.weaponMeshes = {};
+    this.weaponMeta = {};
     this.fallbackRoot = new THREE.Group();
     this.viewmodelRoot.add(this.fallbackRoot);
 
+    this.muzzleFlashGroup = null;
     this.muzzleFlashSprite = null;
     this.state = {
       pistol: { mag: 15, reserve: 90 },
@@ -423,6 +578,12 @@ export class WeaponSystem {
     this.sprintBlend = 0;
     this.kickZ = 0;
     this.kickRotX = 0;
+    this.boltOffset = 0;
+    this.breathPhase = 0;
+    this.swayLagX = 0;
+    this.swayLagY = 0;
+    this._lastYaw = 0;
+    this._lastPitch = 0;
     this._triggerHeld = false;
     this._emptyCooldown = 0;
 
@@ -447,6 +608,10 @@ export class WeaponSystem {
 
     this._buildDefaultViewmodels();
     this.equip(ORDER[this.currentIndex], true);
+  }
+
+  setTextures({ gunmetal = null, wood = null, camo = null, glove = null } = {}) {
+    this._texLib = { gunmetal, wood, camo, glove };
   }
 
   _collectWeaponBakedMats(id, root) {
@@ -514,6 +679,9 @@ export class WeaponSystem {
     this.recoilVelY = 0;
     this.kickZ = 0;
     this.kickRotX = 0;
+    this.boltOffset = 0;
+    this.swayLagX = 0;
+    this.swayLagY = 0;
     this.equip(ORDER[this.currentIndex], true);
   }
 
@@ -537,18 +705,40 @@ export class WeaponSystem {
     const woodStock = createBakedLitBasicMaterial({ color: 0x6f4b2f, specBoost: 0.05 });
     const polymer = createBakedLitBasicMaterial({ color: 0x333840, specBoost: 0.14 });
 
+    // Multi-fin 3D additive golden-yellow muzzle flash star + radial sprite
+    this.muzzleFlashGroup = new THREE.Group();
     const flashMat = new THREE.SpriteMaterial({
       map: this._muzzleTex,
-      color: 0xffdfa0,
+      color: 0xffe688,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
     this.muzzleFlashSprite = new THREE.Sprite(flashMat);
-    this.muzzleFlashSprite.scale.set(0.18, 0.18, 1);
-    this.muzzleFlashSprite.position.set(0, -0.02, -0.45);
-    this.viewmodelRoot.add(this.muzzleFlashSprite);
+    this.muzzleFlashSprite.scale.set(0.20, 0.20, 1);
+    this.muzzleFlashGroup.add(this.muzzleFlashSprite);
+
+    const starMat = new THREE.MeshBasicMaterial({
+      map: this._muzzleTex,
+      color: 0xffd24a,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const finGeo = new THREE.PlaneGeometry(0.16, 0.065);
+    for (let f = 0; f < 3; f++) {
+      const fin = new THREE.Mesh(finGeo, starMat);
+      fin.rotation.y = Math.PI / 2;
+      fin.rotation.x = (f * Math.PI) / 3;
+      fin.position.z = -0.06;
+      this.muzzleFlashGroup.add(fin);
+    }
+    this._muzzleStarMat = starMat;
+    this.muzzleFlashGroup.visible = false;
+    this.viewmodelRoot.add(this.muzzleFlashGroup);
 
     const makeFallback = (len, bodyColor) => {
       const g = new THREE.Group();
@@ -575,37 +765,62 @@ export class WeaponSystem {
 
     const wrapper = new THREE.Group();
     const cloned = cloneSkinned(modelScene);
+    const animNodes = {
+      bolt: null,
+      boltBaseZ: 0,
+      charging: null,
+      chargingBaseZ: 0,
+      mag: null,
+      magBaseY: 0,
+      holoReticle: null,
+      leftArm: null,
+      rightArm: null,
+    };
+
     cloned.traverse((c) => {
       if (c.isMesh) {
         c.frustumCulled = false;
+        ensureBoxProjectedUVs(c.geometry, id === 'pistol' ? 14.0 : 9.0);
         if (c.material) {
           c.material = Array.isArray(c.material)
-            ? c.material.map((m) => liftWeaponMaterial(m, false, id))
-            : liftWeaponMaterial(c.material, false, id);
+            ? c.material.map((m) => liftWeaponMaterial(m, false, id, this._texLib))
+            : liftWeaponMaterial(c.material, false, id, this._texLib);
         }
+      }
+      const n = (c.name || '').toLowerCase();
+      if ((n === 'bolt' || n.includes('bolt')) && !n.includes('release') && !animNodes.bolt) {
+        animNodes.bolt = c;
+        animNodes.boltBaseZ = c.position.z;
+      } else if (n.includes('charging') && !animNodes.charging) {
+        animNodes.charging = c;
+        animNodes.chargingBaseZ = c.position.z;
+      } else if (n.includes('magazine') && !n.includes('release') && !animNodes.mag) {
+        animNodes.mag = c;
+        animNodes.magBaseY = c.position.y;
       }
     });
 
     if (id === 'm4') {
       cloned.scale.setScalar(0.96);
       cloned.position.set(0, 0, 0);
-      // Fold/hide M4 flip-up iron sights so the EOTech Holo reticle & window are unobstructed
       cloned.traverse((o) => {
-        if (o.isBone && /sight/i.test(o.name)) {
-          o.scale.setScalar(0.001);
+        if (/sight/i.test(o.name)) {
+          o.visible = false;
+          if (o.isBone) o.scale.setScalar(0.001);
         }
       });
-      wrapper.add(createHoloOptic(extraScene, this._reticleTex));
+      const holo = createHoloOptic(extraScene, this._reticleTex, this._texLib);
+      animNodes.holoReticle = holo.userData.reticlePlane || null;
+      wrapper.add(holo);
     } else if (id === 'akm') {
       cloned.scale.setScalar(0.94);
       cloned.position.set(0, 0, 0);
       const frontGlow = new THREE.Mesh(
-        new THREE.BoxGeometry(0.0020, 0.0045, 0.003),
-        new THREE.MeshBasicMaterial({ color: 0x6cff7a })
+        new THREE.BoxGeometry(0.0020, 0.0048, 0.003),
+        new THREE.MeshBasicMaterial({ color: 0x7bff85 })
       );
       frontGlow.position.set(0, 0.0755, -0.375);
-      // Subtle rear sight glowing flank dots for fast target acquisition
-      const rearMat = new THREE.MeshBasicMaterial({ color: 0x35c948 });
+      const rearMat = new THREE.MeshBasicMaterial({ color: 0x45d85a });
       const rL = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.0032, 0.002), rearMat);
       rL.position.set(-0.0045, 0.073, -0.075);
       const rR = rL.clone();
@@ -615,7 +830,7 @@ export class WeaponSystem {
       cloned.scale.setScalar(1.32);
       cloned.position.set(0, 0, 0);
       const frontDot = new THREE.Mesh(
-        new THREE.BoxGeometry(0.0022, 0.0032, 0.003),
+        new THREE.BoxGeometry(0.0022, 0.0034, 0.003),
         new THREE.MeshBasicMaterial({ color: 0x7eff7a })
       );
       frontDot.position.set(0, 0.094, -0.122);
@@ -627,10 +842,14 @@ export class WeaponSystem {
       wrapper.add(frontDot, rL, rR);
     }
 
-    wrapper.add(cloned);
-    wrapper.add(createTacticalHands(id));
+    const hands = createTacticalHands(id, this._texLib);
+    animNodes.leftArm = hands.userData.leftArm || null;
+    animNodes.rightArm = hands.userData.rightArm || null;
+
+    wrapper.add(cloned, hands);
     wrapper.visible = id === this.activeDef.id;
     this.weaponMeshes[id] = wrapper;
+    this.weaponMeta[id] = animNodes;
     this.viewmodelRoot.add(wrapper);
     this._collectWeaponBakedMats(id, wrapper);
   }
@@ -638,8 +857,9 @@ export class WeaponSystem {
   equip(id, silent = false) {
     this.isReloading = false;
     this.reloadTimer = 0;
-    this.drawTimer = 0.24;
+    this.drawTimer = 0.28;
     this.shotIndex = 0;
+    this.boltOffset = 0;
     for (const [k, mesh] of Object.entries(this.weaponMeshes)) {
       mesh.visible = k === id;
     }
@@ -670,41 +890,110 @@ export class WeaponSystem {
     this.isReloading = false;
   }
 
+  _animateWeaponNodes() {
+    const id = this.activeDef.id;
+    const meta = this.weaponMeta[id];
+    if (!meta) return;
+
+    // Reciprocating bolt / charging handle on shot blowback
+    if (meta.bolt) {
+      meta.bolt.position.z = meta.boltBaseZ + this.boltOffset;
+    }
+    if (meta.charging) {
+      meta.charging.position.z = meta.chargingBaseZ + this.boltOffset * 0.45;
+    }
+
+    // Collimated Holo reticle subtle optical parallax response
+    if (meta.holoReticle) {
+      meta.holoReticle.position.x = THREE.MathUtils.clamp(-this.swayLagX * 0.08, -0.0022, 0.0022);
+      meta.holoReticle.position.y = 0.0168 + THREE.MathUtils.clamp(this.swayLagY * 0.08, -0.0022, 0.0022);
+    }
+
+    // Reload animation: magazine drops cleanly out & left arm sweeps down to fetch fresh mag
+    if (this.isReloading) {
+      const p = 1 - Math.max(0, this.reloadTimer / this.activeDef.reloadTime);
+      const dropPhase = p < 0.35 ? Math.sin((p / 0.35) * Math.PI * 0.5) : p > 0.72 ? Math.cos(((p - 0.72) / 0.28) * Math.PI * 0.5) : 1.0;
+      if (meta.mag) {
+        meta.mag.position.y = meta.magBaseY - dropPhase * 0.14;
+        meta.mag.rotation.x = dropPhase * 0.22;
+      }
+      if (meta.leftArm) {
+        meta.leftArm.position.set(-0.045 * dropPhase, -0.11 * dropPhase, 0.07 * dropPhase);
+        meta.leftArm.rotation.set(0.32 * dropPhase, 0.0, -0.18 * dropPhase);
+      }
+    } else {
+      if (meta.mag) {
+        meta.mag.position.y = meta.magBaseY;
+        meta.mag.rotation.x = 0;
+      }
+      if (meta.leftArm) {
+        meta.leftArm.position.set(0, 0, 0);
+        meta.leftArm.rotation.set(0, 0, 0);
+      }
+    }
+  }
+
   _syncViewmodelTransform(player) {
     const def = this.activeDef;
     this._vPos.lerpVectors(def.hipPos, def.adsPos, this.adsBlend);
-    const swayScale = 1 - this.adsBlend * 0.88;
-    const sway = Math.sin(player.bobPhase) * (player.isSprinting ? 0.011 : 0.0032) * swayScale;
-    const swayY = Math.abs(Math.cos(player.bobPhase)) * (player.isSprinting ? 0.009 : 0.0025) * swayScale;
-    const drawDrop = (this.drawTimer / 0.24) * 0.16;
 
+    // 1. Living Idle Breathing + Subtle Figure-8 Sway (damped cleanly on ADS hold-breath)
+    const idleScale = 1 - this.adsBlend * 0.84;
+    const breathX = Math.sin(this.breathPhase * 0.85) * 0.0017 * idleScale;
+    const breathY = Math.sin(this.breathPhase * 1.70) * 0.0026 * idleScale;
+    const breathPitch = Math.cos(this.breathPhase * 1.70) * 0.0055 * idleScale;
+
+    // 2. Rhythmic Walk & Sprint Stride Figure-8 Bob + Airborne Dip
+    const swayScale = 1 - this.adsBlend * 0.90;
+    const stride = player.isGrounded ? 1.0 : 0.15;
+    const swayX = Math.sin(player.bobPhase) * (player.isSprinting ? 0.015 : 0.0046) * swayScale * stride;
+    const swayY = Math.abs(Math.cos(player.bobPhase)) * (player.isSprinting ? 0.013 : 0.0038) * swayScale * stride;
+    const jumpLag = THREE.MathUtils.clamp(-player.velY * 0.0024, -0.022, 0.018) + player.landDip * 0.14;
+    const drawDrop = (this.drawTimer / 0.28) * 0.17;
+
+    // 3. Reload Tilt & Drop
     let rDrop = 0;
     let rRotX = 0;
     let rRotZ = 0;
     if (this.isReloading) {
       const p = 1 - Math.max(0, this.reloadTimer / def.reloadTime);
       const lift = Math.sin(p * Math.PI);
-      rDrop = lift * 0.095;
-      rRotX = -0.30 * lift;
-      rRotZ = 0.36 * lift;
+      rDrop = lift * 0.075;
+      rRotX = -0.24 * lift;
+      rRotZ = 0.42 * lift;
     }
 
+    // 4. CODM / Delta Force High-Ready Tactical Sprint Canted Across Chest
     const hipYaw = (def.hipYaw || 0) * (1 - this.adsBlend);
     this.viewmodelRoot.position.set(
-      this._vPos.x + sway + this.sprintBlend * -0.04,
-      this._vPos.y - swayY - drawDrop - rDrop - this.sprintBlend * 0.04,
-      this._vPos.z + this.kickZ + this.sprintBlend * 0.025
+      this._vPos.x + breathX + swayX + this.swayLagX * (1 - this.adsBlend * 0.65) - this.sprintBlend * 0.068,
+      this._vPos.y + breathY - swayY + jumpLag + this.swayLagY * (1 - this.adsBlend * 0.65) - drawDrop - rDrop - this.sprintBlend * 0.022,
+      this._vPos.z + this.kickZ + this.sprintBlend * 0.028
     );
     this.viewmodelRoot.rotation.set(
-      this.kickRotX + rRotX - drawDrop * 1.4 - this.sprintBlend * 0.20,
-      hipYaw + this.sprintBlend * 0.34,
-      rRotZ + this.sprintBlend * 0.26
+      this.kickRotX + breathPitch + rRotX - drawDrop * 1.35 + this.swayLagY * 1.4 - this.sprintBlend * 0.14,
+      hipYaw - this.swayLagX * 1.8 + this.sprintBlend * 0.56,
+      rRotZ - swayX * 2.2 + this.sprintBlend * 0.36
     );
   }
 
   update(dt, cmd, player, onHitEnemy, onHitMarker) {
     const def = this.activeDef;
     const st = this.activeAmmo;
+
+    this.breathPhase += dt * (player.isSprinting ? 2.4 : 1.35);
+
+    // Smooth viewmodel turn inertia (lags slightly behind camera pan then centers)
+    let dyaw = player.yaw - this._lastYaw;
+    while (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    while (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    const dpitch = player.pitch - this._lastPitch;
+    this._lastYaw = player.yaw;
+    this._lastPitch = player.pitch;
+    this.swayLagX = THREE.MathUtils.clamp(this.swayLagX + dyaw * 0.032, -0.018, 0.018);
+    this.swayLagY = THREE.MathUtils.clamp(this.swayLagY - dpitch * 0.032, -0.016, 0.016);
+    this.swayLagX *= Math.max(0, 1 - dt * 11.5);
+    this.swayLagY *= Math.max(0, 1 - dt * 11.5);
 
     if (cmd.switchWeapon) this.switchNext();
     if (cmd.reload) this.startReload();
@@ -723,13 +1012,12 @@ export class WeaponSystem {
 
     const targetAds = cmd.ads && !this.isReloading ? 1 : 0;
     const targetSprint = player.isSprinting && !this.isReloading && !cmd.ads ? 1 : 0;
-    this.adsBlend += (targetAds - this.adsBlend) * Math.min(1, dt * 16);
+    this.adsBlend += (targetAds - this.adsBlend) * Math.min(1, dt * 17);
     this.sprintBlend += (targetSprint - this.sprintBlend) * Math.min(1, dt * 11);
 
     const wantsFire = cmd.fire && (!this._triggerHeld || def.auto);
     this._triggerHeld = cmd.fire;
 
-    // Allow interrupting reload if chamber/mag still has rounds left
     if (wantsFire && this.isReloading && st.mag > 0) {
       this.isReloading = false;
       this.reloadTimer = 0;
@@ -766,6 +1054,7 @@ export class WeaponSystem {
 
     this.kickZ += (0 - this.kickZ) * Math.min(1, dt * 22);
     this.kickRotX += (0 - this.kickRotX) * Math.min(1, dt * 22);
+    this.boltOffset += (0 - this.boltOffset) * Math.min(1, dt * 28);
 
     const targetFov = THREE.MathUtils.lerp(72, def.adsFov, this.adsBlend);
     if (Math.abs(this.camera.fov - targetFov) > 0.05) {
@@ -773,10 +1062,14 @@ export class WeaponSystem {
       this.camera.updateProjectionMatrix();
     }
 
+    this._animateWeaponNodes();
     this._syncViewmodelTransform(player);
 
-    if (this.muzzleFlashSprite.material.opacity > 0) {
-      this.muzzleFlashSprite.material.opacity = Math.max(0, this.muzzleFlashSprite.material.opacity - dt * 32);
+    if (this.muzzleFlashGroup?.visible) {
+      const nextOp = Math.max(0, this.muzzleFlashSprite.material.opacity - dt * 14);
+      this.muzzleFlashSprite.material.opacity = nextOp;
+      if (this._muzzleStarMat) this._muzzleStarMat.opacity = nextOp * 0.96;
+      if (nextOp <= 0.01) this.muzzleFlashGroup.visible = false;
     }
   }
 
@@ -786,16 +1079,14 @@ export class WeaponSystem {
     st.mag--;
     this.fireTimer = Math.max(0.02, this.fireTimer + 60 / def.rpm);
 
-    // 1. Sample pre-recoil camera origin & aim direction FIRST so bullet goes exactly where crosshair/Holo dot points!
     player.applyCamera(1.0);
     this.camera.updateMatrixWorld(true);
     this._vOrigin.copy(this.camera.position);
     this._vDir.copy(player.getAimDirection());
 
-    // Uniform circular disk spread perpendicular to aim ray (tighter during ADS & crouch)
     const crouchSpread = player.isCrouching ? 0.65 : 1.0;
     const spread =
-      (def.spreadBase * (1 - this.adsBlend * 0.85) + (player.isSprinting ? def.spreadMove : 0)) * crouchSpread;
+      (def.spreadBase * (1 - this.adsBlend * 0.88) + (player.isSprinting ? def.spreadMove : 0)) * crouchSpread;
     if (spread > 1e-5) {
       const ang = Math.random() * Math.PI * 2;
       const rad = spread * Math.sqrt(Math.random());
@@ -808,31 +1099,38 @@ export class WeaponSystem {
         .normalize();
     }
 
-    // 2. Apply recoil kick AFTER computing the shot ray (keeps ADS Holo dot locked smoothly on window)
     const pat = def.recoilPattern[Math.floor(this.shotIndex) % def.recoilPattern.length];
     this.shotIndex++;
     const crouchRecoil = player.isCrouching ? 0.75 : 1.0;
     const adsScale = (1 - this.adsBlend * 0.44) * crouchRecoil;
     this.recoilPitch += pat.p * adsScale;
     this.recoilYaw += pat.y * adsScale;
-    this.kickZ = 0.028 * (1 - this.adsBlend * 0.48);
-    this.kickRotX = this.adsBlend > 0.5 ? 0.014 : 0.054;
+    this.kickZ = 0.030 * (1 - this.adsBlend * 0.45);
+    this.kickRotX = this.adsBlend > 0.5 ? 0.014 : 0.056;
+    this.boltOffset = 0.036;
     this.shakeTime = 0.065;
 
     player.recoilPitch = this.recoilPitch;
     player.recoilYaw = this.recoilYaw;
     player.applyCamera(1.0);
+    this._animateWeaponNodes();
     this._syncViewmodelTransform(player);
     this.camera.updateMatrixWorld(true);
 
-    this.muzzleFlashSprite.position.copy(def.muzzleLocal);
-    const fs = (def.id === 'pistol' ? 0.12 : 0.16) * (0.85 + Math.random() * 0.3);
-    this.muzzleFlashSprite.scale.set(fs, fs, 1);
-    this.muzzleFlashSprite.material.opacity = 0.85;
-    this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
+    if (this.muzzleFlashGroup) {
+      this.muzzleFlashGroup.position.copy(def.muzzleLocal);
+      this.muzzleFlashGroup.rotation.z = Math.random() * Math.PI * 2;
+      const fs = (def.id === 'pistol' ? 0.17 : 0.25) * (0.90 + Math.random() * 0.28);
+      this.muzzleFlashSprite.scale.set(fs, fs, 1);
+      this.muzzleFlashSprite.material.opacity = 1.0;
+      this.muzzleFlashSprite.material.rotation = Math.random() * Math.PI * 2;
+      if (this._muzzleStarMat) this._muzzleStarMat.opacity = 0.95;
+      this.muzzleFlashGroup.visible = true;
+    }
 
     this._vMuzzleW.copy(def.muzzleLocal).applyMatrix4(this.viewmodelRoot.matrixWorld);
-    this.effects.triggerMuzzleFlash(this._vMuzzleW);
+    this._vForward.copy(this._vMuzzleW).addScaledVector(this._vDir, 0.95);
+    this.effects.triggerMuzzleFlash(this._vForward, true);
 
     this._vRight.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
     this._vUp.set(0, 1, 0).applyQuaternion(this.camera.quaternion);

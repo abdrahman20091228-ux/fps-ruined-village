@@ -1,4 +1,4 @@
-const SHELL_CACHE = 'ashes-of-vale-shell-v9';
+const SHELL_CACHE = 'ashes-of-vale-shell-v10';
 const SHELL_URLS = [
   './',
   './index.html',
@@ -48,7 +48,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for immutable CDN libraries (three.js, rapier) & app shell stale-while-revalidate
+  // Cache-first for immutable CDN libraries (three.js, rapier)
   if (url.hostname === 'cdn.jsdelivr.net') {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
@@ -62,17 +62,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first for origin shell (HTML, JS, CSS) so mobile updates land immediately, offline fallback to cache
   if (url.origin === self.location.origin && !url.pathname.includes('/assets/')) {
     event.respondWith(
       caches.open(SHELL_CACHE).then(async (cache) => {
-        const hit = await cache.match(req);
-        const netPromise = fetch(req)
-          .then((resp) => {
-            if (resp && resp.ok) cache.put(req, resp.clone()).catch(() => {});
-            return resp;
-          })
-          .catch(() => hit);
-        return hit || netPromise;
+        try {
+          const resp = await fetch(req, { cache: 'no-cache' });
+          if (resp && resp.ok) {
+            cache.put(req, resp.clone()).catch(() => {});
+          }
+          return resp;
+        } catch {
+          const hit = await cache.match(req);
+          return hit || new Response('Offline', { status: 503, statusText: 'Offline' });
+        }
       })
     );
   }

@@ -46,7 +46,7 @@
   <!-- Loading Screen -->
   <div id="loading-screen" class="screen-overlay">
     <div class="loading-panel">
-      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V9</div>
+      <div class="brand-badge">SECTOR 04 // TACTICAL BUILD V10</div>
       <h1 class="game-title">ASHES OF VALE</h1>
       <p class="subtitle">WOODLAND VILLAGE &amp; MULTI-STORY ASSAULT</p>
 
@@ -79,7 +79,7 @@
     <div class="lobby-shell">
       <header class="lobby-topbar">
         <div class="lobby-brand">
-          <div class="mission-tag">OPERATION: ASHEN THRESHOLD // V9</div>
+          <div class="mission-tag">OPERATION: ASHEN THRESHOLD // V10</div>
           <h1 class="lobby-title">ASHES OF VALE</h1>
         </div>
 
@@ -118,6 +118,12 @@
                 <span class="wc-sub">9MM • AGILE</span>
               </button>
             </div>
+            <div id="lobby-weapon-stats">
+              <div class="ws-row"><span class="ws-lbl">DMG</span><div class="ws-track"><div id="stat-dmg" class="ws-fill" style="width:74%"></div></div></div>
+              <div class="ws-row"><span class="ws-lbl">ROF</span><div class="ws-track"><div id="stat-rof" class="ws-fill" style="width:88%"></div></div></div>
+              <div class="ws-row"><span class="ws-lbl">CTRL</span><div class="ws-track"><div id="stat-ctrl" class="ws-fill" style="width:84%"></div></div></div>
+              <div class="ws-row"><span class="ws-lbl">MOB</span><div class="ws-track"><div id="stat-mob" class="ws-fill" style="width:76%"></div></div></div>
+            </div>
           </div>
 
           <div class="dock-block">
@@ -138,8 +144,9 @@
             </div>
             <div class="lm-metrics">
               <span><strong>12</strong> Hostiles</span>
-              <span><strong>5F</strong> Ruined Tower</span>
-              <span><strong>2F</strong> Breach Homes</span>
+              <span><strong>5F</strong> Apt</span>
+              <span><strong>14m</strong> Tower</span>
+              <span><strong>7</strong> Sectors</span>
             </div>
           </div>
 
@@ -370,7 +377,8 @@
     <div id="mission-banner" class="hidden">ELIMINATE 12 HOSTILES — CLEAR HOUSES &amp; 5-STORY TOWER</div>
     <div id="medkit-toast" class="hidden">+35 HP // MEDKIT</div>
 
-    <!-- Dynamic Center Crosshair, Reload Bar & Hit Marker -->
+    <!-- Dynamic Center Crosshair, ADS Optic Vignette, Reload Bar & Hit Marker -->
+    <div id="ads-vignette"></div>
     <div id="crosshair">
       <div class="ch-line ch-top"></div>
       <div class="ch-line ch-bottom"></div>

@@ -6,11 +6,15 @@ import { AssetLoader } from './core/assetLoader.js';
 import { PlayerController } from './player/controller.js';
 import { InputManager } from './input/touchControls.js';
 import { DoorSystem } from './world/doors.js';
-import { VillageBuilder } from './world/villageBuilder.js';
+import { VillageBuilder, getTerrainHeight } from './world/villageBuilder.js';
 import { EffectsSystem } from './fx/effects.js';
 import { AudioSystem } from './audio/audioSystem.js';
 import { WeaponSystem } from './weapons/weapons.js';
 import { EnemySystem } from './ai/enemySystem.js';
+
+function getPlayerSpawnPos() {
+  return { x: 2.2, y: getTerrainHeight(2.2, 34.5) + 0.12, z: 34.5 };
+}
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -120,6 +124,7 @@ const hudPrev = {
   doorVisible: null,
   chGap: '',
   chOpacity: '',
+  adsBlend: '',
 };
 
 function setGameState(next) {
@@ -464,12 +469,22 @@ async function buildWorld() {
     village.setShadowBlobsEnabled(qPreset.shadowBlobs !== false);
     enemySys.setDynamicBlobsEnabled(qPreset.dynamicBlobs !== false);
 
-    const [pistolGltf, akmGltf, m4Gltf, holoGltf] = await Promise.all([
+    const [pistolGltf, akmGltf, m4Gltf, holoGltf, gunmetalTex, woodTex, camoTex, gloveTex] = await Promise.all([
       assets.loadModel('pistol'),
       assets.loadModel('akm'),
       assets.loadModel('m4'),
       assets.loadModel('holo'),
+      assets.loadTexture('gunmetal_detail', 2, 2),
+      assets.loadTexture('wood', 2, 2),
+      assets.loadTexture('camo_fabric', 2, 2),
+      assets.loadTexture('glove_leather', 2, 2),
     ]);
+    weapons.setTextures({
+      gunmetal: gunmetalTex,
+      wood: woodTex,
+      camo: camoTex,
+      glove: gloveTex,
+    });
     weapons.attachWeaponModel('pistol', pistolGltf.scene);
     weapons.attachWeaponModel('akm', akmGltf.scene);
     weapons.attachWeaponModel('m4', m4Gltf.scene, holoGltf.scene);
@@ -480,7 +495,7 @@ async function buildWorld() {
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   allLodObjects = village ? [...village.lodObjects, ...enemySys.lodObjects] : [...enemySys.lodObjects];
   totalEnemies = enemySys.getRemainingCount();
-  player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
+  player.spawn(getPlayerSpawnPos(), 0.08);
   weapons.resetAll(settings.preferredWeapon || 'm4');
   weapons.updateLighting(_playerProbeTint.set(1, 1, 1), 0);
   weapons.setVisible(false);
@@ -501,7 +516,7 @@ async function restartMission() {
   await enemySys.spawnVillageSquad(village, settings.difficulty);
   allLodObjects = village ? [...village.lodObjects, ...enemySys.lodObjects] : [...enemySys.lodObjects];
   totalEnemies = enemySys.getRemainingCount();
-  player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
+  player.spawn(getPlayerSpawnPos(), 0.08);
   damageHits.length = 0;
   heartbeatAccum = 0;
   updateDynamicDamageIndicators(0);
@@ -552,7 +567,7 @@ function bindUI() {
       await enemySys.spawnVillageSquad(village, settings.difficulty);
       allLodObjects = village ? [...village.lodObjects, ...enemySys.lodObjects] : [...enemySys.lodObjects];
       totalEnemies = enemySys.getRemainingCount();
-      player.spawn({ x: 0, y: 0.25, z: 32.5 }, 0);
+      player.spawn(getPlayerSpawnPos(), 0.08);
       weapons.resetAll(settings.preferredWeapon || 'm4');
       damageHits.length = 0;
       heartbeatAccum = 0;
@@ -562,7 +577,7 @@ function bindUI() {
       weapons.setVisible(false);
       introTime = 0;
       document.getElementById('intro-subtitle').textContent =
-        `${totalEnemies} HOSTILES DETECTED — BREACH HOUSES & 5-STORY TOWER`;
+        `${totalEnemies} HOSTILES DETECTED — BREACH TAVERN, TOWER & BRIDGE`;
       document.getElementById('intro-overlay').classList.remove('hidden');
       setGameState('intro');
       return;
@@ -667,11 +682,30 @@ function bindUI() {
     document.getElementById('menu-cache-badge').textContent = 'Cache cleared';
   });
 
+  const WEAPON_STATS = {
+    m4: { dmg: 74, rof: 88, ctrl: 84, mob: 76 },
+    akm: { dmg: 92, rof: 68, ctrl: 62, mob: 70 },
+    pistol: { dmg: 58, rof: 52, ctrl: 92, mob: 96 },
+  };
+  const syncWeaponStats = (id) => {
+    const st = WEAPON_STATS[id] || WEAPON_STATS.m4;
+    const dEl = document.getElementById('stat-dmg');
+    const rEl = document.getElementById('stat-rof');
+    const cEl = document.getElementById('stat-ctrl');
+    const mEl = document.getElementById('stat-mob');
+    if (dEl) dEl.style.width = `${st.dmg}%`;
+    if (rEl) rEl.style.width = `${st.rof}%`;
+    if (cEl) cEl.style.width = `${st.ctrl}%`;
+    if (mEl) mEl.style.width = `${st.mob}%`;
+  };
+  syncWeaponStats(settings.preferredWeapon || 'm4');
+
   document.querySelectorAll('#weapon-selector .weapon-card').forEach((card) => {
     card.classList.toggle('active', card.dataset.weapon === (settings.preferredWeapon || 'm4'));
     card.addEventListener('click', () => {
       settings.preferredWeapon = card.dataset.weapon;
       saveSettings(settings);
+      syncWeaponStats(settings.preferredWeapon);
       document.querySelectorAll('#weapon-selector .weapon-card').forEach((c) =>
         c.classList.toggle('active', c === card)
       );
@@ -976,7 +1010,12 @@ async function boot() {
         const fwd = player.getAimDirection();
         audio.updateListener(engine.camera.position, fwd, _upVec);
 
-        // Dynamic Crosshair (expands crosshair lines cleanly via --ch-gap without blurring center dot)
+        // Dynamic Crosshair & ADS Optic Vignette
+        const adsBlendStr = weapons.adsBlend.toFixed(2);
+        if (hudPrev.adsBlend !== adsBlendStr && hudEls.hud) {
+          hudPrev.adsBlend = adsBlendStr;
+          hudEls.hud.style.setProperty('--ads-blend', adsBlendStr);
+        }
         if (hudEls.crosshair) {
           const moveMag = Math.min(1, Math.hypot(input.state.moveX, input.state.moveY));
           const spreadKick =
@@ -1116,8 +1155,12 @@ async function boot() {
         }
       } else {
         menuOrbitAngle += renderDt * 0.08;
-        engine.camera.position.set(Math.sin(menuOrbitAngle) * 14, 7.2, 12 + Math.cos(menuOrbitAngle) * 10);
-        engine.camera.lookAt(0, 3.4, -14);
+        engine.camera.position.set(
+          -1.8 + Math.sin(menuOrbitAngle) * 21.5,
+          8.6,
+          4.0 + Math.cos(menuOrbitAngle) * 14.0
+        );
+        engine.camera.lookAt(-2.2, 3.6, -15.5);
         village?.updateAtmosphere(renderDt, engine.camera);
       }
     }

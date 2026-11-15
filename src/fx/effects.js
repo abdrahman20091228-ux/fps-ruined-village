@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { MUZZLE_LIGHT_UNIFORMS } from '../core/lightProbes.js';
 
 const MAX_DECALS = 64;
 const MAX_TRACERS = 18;
@@ -22,8 +23,10 @@ export class EffectsSystem {
     this._vLook = new THREE.Vector3();
     this._vJitter = new THREE.Vector3();
 
-    // Muzzle flash timer (drives viewmodel weapon illumination pulse with 0 PointLights!)
+    // Muzzle flash timer (drives both weapon illumination & world-space yellow flash glow at 0 PointLight cost!)
     this._muzzleTimer = 0;
+    this._muzzleDuration = 0.085;
+    this._muzzlePeak = 1.0;
     this.muzzleIntensity = 0;
 
     // Decals pool (max 64)
@@ -109,9 +112,15 @@ export class EffectsSystem {
     }
   }
 
-  triggerMuzzleFlash(_worldPos) {
-    this.muzzleIntensity = 1.0;
-    this._muzzleTimer = 0.042;
+  triggerMuzzleFlash(worldPos, isPlayer = true) {
+    this._muzzlePeak = isPlayer ? 1.55 : 0.75;
+    this._muzzleDuration = isPlayer ? 0.125 : 0.07;
+    this._muzzleTimer = this._muzzleDuration;
+    this.muzzleIntensity = this._muzzlePeak;
+    if (worldPos) {
+      MUZZLE_LIGHT_UNIFORMS.uMuzzlePos.value.copy(worldPos);
+    }
+    MUZZLE_LIGHT_UNIFORMS.uMuzzleInfo.value.set(1.0, 0.85, 0.28, this._muzzlePeak);
   }
 
   spawnTracer(start, end) {
@@ -188,10 +197,13 @@ export class EffectsSystem {
 
   update(dt) {
     if (this._muzzleTimer > 0) {
-      this._muzzleTimer -= dt;
-      this.muzzleIntensity = Math.max(0, this._muzzleTimer / 0.042);
-    } else {
+      this._muzzleTimer = Math.max(0, this._muzzleTimer - dt);
+      const frac = this._muzzleTimer / Math.max(0.01, this._muzzleDuration);
+      this.muzzleIntensity = frac * frac * this._muzzlePeak;
+      MUZZLE_LIGHT_UNIFORMS.uMuzzleInfo.value.w = this.muzzleIntensity;
+    } else if (this.muzzleIntensity > 0) {
       this.muzzleIntensity = 0;
+      MUZZLE_LIGHT_UNIFORMS.uMuzzleInfo.value.w = 0;
     }
 
     for (const t of this.tracers) {

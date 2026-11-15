@@ -237,12 +237,55 @@ svg {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: rgba(14, 18, 22, 0.88);
-  border: 1px solid var(--panel-border);
+  background: rgba(14, 18, 22, 0.84);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(201, 155, 66, 0.36);
   border-left: 3px solid var(--accent-amber);
   padding: 10px 13px;
   border-radius: 4px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+}
+
+#lobby-weapon-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px 12px;
+  margin-top: 3px;
+  padding: 5px 8px;
+  background: rgba(8, 11, 14, 0.58);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+}
+
+.ws-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ws-lbl {
+  width: 30px;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  color: var(--text-muted);
+}
+
+.ws-track {
+  flex: 1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.10);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ws-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent-olive), var(--accent-amber));
+  border-radius: 2px;
+  transition: width 0.22s ease;
 }
 
 .dock-block {
@@ -326,12 +369,15 @@ svg {
 }
 
 .lobby-mission-card {
-  background: rgba(14, 18, 22, 0.88);
-  border: 1px solid var(--panel-border);
+  background: rgba(14, 18, 22, 0.84);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(201, 155, 66, 0.36);
   border-right: 3px solid var(--accent-amber);
   padding: 9px 12px;
   border-radius: 4px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(10px 0, 100% 0, 100% 100%, 0 100%, 0 10px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
 }
 
 .lm-top {
@@ -882,6 +928,15 @@ svg {
   background: linear-gradient(90deg, #c99b42, #ffd24d);
 }
 
+#ads-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 38%, rgba(7, 9, 12, 0.54) 76%, rgba(4, 6, 8, 0.88) 100%);
+  opacity: calc(var(--ads-blend, 0) * 0.72);
+  will-change: opacity;
+}
+
 #damage-vignette {
   position: fixed;
   inset: 0;
@@ -1273,10 +1328,13 @@ svg {
   .lobby-shell { gap: 4px; }
   .mission-tag { margin-bottom: 3px; font-size: 9px; padding: 2px 6px; }
   .lobby-title { font-size: 20px; }
-  .lobby-dock-left { padding: 8px 10px; gap: 6px; }
-  .weapon-card { padding: 5px 7px; }
+  .lobby-dock-left { padding: 7px 10px; gap: 5px; }
+  #lobby-weapon-stats { gap: 3px 10px; padding: 3px 6px; margin-top: 2px; }
+  .weapon-card { padding: 4px 7px; }
   .seg-btn { padding: 5px 4px; font-size: 10px; }
-  .lobby-mission-card { padding: 7px 10px; }
+  .lobby-mission-card { padding: 6px 9px; }
+  .lm-metrics { gap: 5px; font-size: 9.5px; }
+  .lm-metrics strong { font-size: 11px; }
   .btn-deploy { padding: 9px 12px; font-size: 12px; }
   #radar-shell { width: 72px; height: 72px; }
   .radar-n-pip { --n-rad: -35px; }

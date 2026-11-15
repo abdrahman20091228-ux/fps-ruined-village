@@ -44,6 +44,7 @@ const EXTRACT_HTML = `<!DOCTYPE html>
         const scene = new THREE.Scene();
         const dummyPhysics = {
           addStaticBox() {},
+          addStaticTrimesh() {},
           addDynamicBox() {},
           addKinematicBox() { return { body: { setRotation() {} }, collider: null }; },
           castRay() { return null; },

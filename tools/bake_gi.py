@@ -221,13 +221,64 @@ def generate_shadow_blob():
     return out_path
 
 
+def smoothstep_vec(edge0, edge1, x):
+    t = np.clip((x - edge0) / max(1e-5, edge1 - edge0), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
+TERRAIN_PADS = [
+    (-20.5, -7.8, 17.0, 28.5, 0.05),
+    (9.2, 19.6, 17.0, 26.0, 0.05),
+    (-18.0, -8.5, -5.6, 2.6, 0.0),
+    (12.0, 23.0, -9.2, 4.2, 0.0),
+    (-20.2, -12.8, -24.2, -16.8, 1.20),
+    (-9.6, 7.4, -23.4, -10.5, 0.0),
+    (-5.2, 10.8, -41.4, -29.8, 0.15),
+    (-8.0, -1.6, 32.8, 38.4, 0.65),
+]
+
+
+def get_terrain_height_vec(px, pz):
+    road_cx = 1.6 * np.sin(pz * 0.055) + 0.04 * pz
+    road_dist = np.abs(px - road_cx)
+    road_flat = smoothstep_vec(3.8, 7.2, road_dist)
+    h = 0.16 * np.sin(px * 0.085) * np.cos(pz * 0.075) * road_flat
+
+    h = h + 0.92 * smoothstep_vec(26.5, 40.5, pz)
+
+    dk2 = (px + 16.5) ** 2 + (pz + 20.5) ** 2
+    h = h + 1.24 * np.exp(-dk2 / (11.0 * 11.0))
+
+    wadi_z = 10.2 + px * 0.06 + 1.6 * np.sin(px * 0.13)
+    d_wadi = np.abs(pz - wadi_z)
+    h = h - 0.78 * np.exp(-(d_wadi ** 2) / (2.45 * 2.45))
+
+    edge = np.maximum.reduce([np.zeros_like(px), np.abs(px) - 31.5, pz - 43.5, -47.5 - pz])
+    h = h + np.where(
+        edge > 0.0,
+        np.minimum(9.5, edge * 0.22) * (0.68 + 0.32 * np.sin(px * 0.11 + pz * 0.09)),
+        0.0,
+    )
+
+    for x0, x1, z0, z1, py in TERRAIN_PADS:
+        dx = np.maximum.reduce([np.zeros_like(px), x0 - px, px - x1])
+        dz = np.maximum.reduce([np.zeros_like(pz), z0 - pz, pz - z1])
+        dist = np.hypot(dx, dz)
+        mask = dist < 3.0
+        if np.any(mask):
+            w = 1.0 - smoothstep_vec(0.0, 3.0, dist[mask])
+            h[mask] = h[mask] * (1.0 - w) + py * w
+
+    return h
+
+
 def bake_ground_lightmap(occ):
-    # UV1 maps x in [-72.5, 72.5], z in [-77.5, 77.5] with flipY=false
+    # UV1 maps x in [-92.0, 92.0], z in [-96.0, 96.0] with flipY=false
     W, H = 1024, 1024
     u = (np.arange(W, dtype=np.float32) + 0.5) / W
     v = (np.arange(H, dtype=np.float32) + 0.5) / H
-    xs = u * 145.0 - 72.5
-    zs = v * 155.0 - 77.5
+    xs = u * 184.0 - 92.0
+    zs = v * 192.0 - 96.0
 
     lm_lin = np.zeros((H, W, 3), dtype=np.float32)
 
@@ -258,13 +309,7 @@ def bake_ground_lightmap(occ):
             gx, gz = np.meshgrid(tx_vals, tz_vals)
             px = gx.ravel()
             pz = gz.ravel()
-            # Match terrain perimeter hills so hill vertices don't self-shadow awkwardly
-            edge = np.maximum(0.0, np.maximum(np.abs(px) - 25.0, np.abs(pz + 4.0) - 46.0))
-            py = np.where(
-                edge > 0.0,
-                np.minimum(7.5, edge * 0.19) * (0.65 + 0.35 * np.sin(px * 0.15 + pz * 0.12)),
-                0.0,
-            ) + 0.12
+            py = get_terrain_height_vec(px, pz) + 0.12
             origins = np.stack([px, py, pz], axis=1).astype(np.float32)
 
             sun_mask = (
@@ -425,9 +470,9 @@ def bake_vertex_gi(meshes, occ):
 
 
 def bake_light_probes(occ):
-    nx, ny, nz = 16, 7, 24
-    min_x, min_y, min_z = -26.0, 0.3, -44.0
-    max_x, max_y, max_z = 26.0, 17.5, 40.0
+    nx, ny, nz = 20, 8, 24
+    min_x, min_y, min_z = -34.0, -0.5, -46.0
+    max_x, max_y, max_z = 34.0, 22.0, 44.0
 
     xs = np.linspace(min_x, max_x, nx, dtype=np.float32)
     ys = np.linspace(min_y, max_y, ny, dtype=np.float32)

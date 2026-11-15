@@ -2,9 +2,95 @@ import * as THREE from 'three';
 
 const SUN_DIR = new THREE.Vector3(22, 13, 24).normalize();
 
+// Shared zero-PointLight dynamic world-space muzzle flash uniforms (golden-yellow flash lighting!)
+export const MUZZLE_LIGHT_UNIFORMS = {
+  uMuzzlePos: { value: new THREE.Vector3(0, -100, 0) },
+  uMuzzleInfo: { value: new THREE.Vector4(1.0, 0.82, 0.28, 0.0) }, // RGB + intensity
+};
+
 /**
- * Zero-light baked shader material using MeshBasicMaterial + vertex-side directional/hemi shading
- * and a dynamic per-entity LightProbe tint uniform. Compiles to an ultra-minimal WebGL program.
+ * Generates clean triplanar box-projected UV coordinates for untextured GLB geometries
+ * (so CC0 diffuse maps can dress m4/pistol/holo/soldiers/foliage with 0 extra triangles).
+ */
+export function ensureBoxProjectedUVs(geometry, uvScale = 1.0) {
+  if (!geometry || geometry.attributes?.uv) return geometry;
+  const pos = geometry.attributes?.position;
+  if (!pos) return geometry;
+  if (!geometry.attributes.normal) {
+    geometry.computeVertexNormals();
+  }
+  const norm = geometry.attributes.normal;
+  const uvs = new Float32Array(pos.count * 2);
+  for (let i = 0; i < pos.count; i++) {
+    const px = pos.getX(i);
+    const py = pos.getY(i);
+    const pz = pos.getZ(i);
+    const nx = Math.abs(norm.getX(i));
+    const ny = Math.abs(norm.getY(i));
+    const nz = Math.abs(norm.getZ(i));
+    if (ny >= nx && ny >= nz) {
+      uvs[i * 2] = px * uvScale;
+      uvs[i * 2 + 1] = pz * uvScale;
+    } else if (nx >= nz) {
+      uvs[i * 2] = pz * uvScale;
+      uvs[i * 2 + 1] = py * uvScale;
+    } else {
+      uvs[i * 2] = px * uvScale;
+      uvs[i * 2 + 1] = py * uvScale;
+    }
+  }
+  geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  return geometry;
+}
+
+/**
+ * Attaches real-time dynamic yellow muzzle flash illumination onto static baked/lightmapped MeshBasicMaterials.
+ */
+export function attachMuzzleLight(mat, radius = 20.0, boost = 2.8) {
+  if (!mat) return mat;
+  mat.customProgramCacheKey = () => `muzzle-lit-arch-v10b-${Math.round(radius)}`;
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uMuzzlePos = MUZZLE_LIGHT_UNIFORMS.uMuzzlePos;
+    shader.uniforms.uMuzzleInfo = MUZZLE_LIGHT_UNIFORMS.uMuzzleInfo;
+
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+varying vec3 vMuzzleWorldPos;`
+      )
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+vec4 mWPos = vec4( transformed, 1.0 );
+#ifdef USE_INSTANCING
+  mWPos = instanceMatrix * mWPos;
+#endif
+vMuzzleWorldPos = ( modelMatrix * mWPos ).xyz;`
+      );
+
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+uniform vec3 uMuzzlePos;
+uniform vec4 uMuzzleInfo;
+varying vec3 vMuzzleWorldPos;`
+      )
+      .replace(
+        'vec3 outgoingLight = reflectedLight.indirectDiffuse;',
+        `float mDist = length( vMuzzleWorldPos - uMuzzlePos );
+float mAtten = max( 0.0, 1.0 - smoothstep( 0.0, ${radius.toFixed(1)}, mDist ) );
+vec3 mFlashGlow = uMuzzleInfo.rgb * ( mAtten * mAtten * uMuzzleInfo.w * ${boost.toFixed(2)} );
+vec3 outgoingLight = reflectedLight.indirectDiffuse * ( vec3( 1.0 ) + mFlashGlow );`
+      );
+  };
+  return mat;
+}
+
+/**
+ * Zero-light baked shader material using MeshBasicMaterial + vertex-side directional/hemi/bounce shading,
+ * dynamic per-entity LightProbe tint, and dynamic yellow world-space muzzle flash illumination.
  */
 export function createBakedLitBasicMaterial(opts = {}) {
   const {
@@ -15,11 +101,12 @@ export function createBakedLitBasicMaterial(opts = {}) {
     opacity = 1.0,
     side = THREE.FrontSide,
     alphaTest = 0.0,
-    sunWeight = 0.44,
-    hemiWeight = 0.22,
-    baseFloor = 0.62,
+    sunWeight = 0.46,
+    hemiWeight = 0.24,
+    baseFloor = 0.56,
     specBoost = 0.0,
     probeTint = null,
+    muzzleRadius = 18.5,
   } = opts;
 
   const mat = new THREE.MeshBasicMaterial({
@@ -38,15 +125,19 @@ export function createBakedLitBasicMaterial(opts = {}) {
     uProbeTint: { value: tintVec },
     uLightParams: { value: new THREE.Vector4(baseFloor, hemiWeight, sunWeight, specBoost) },
     uMuzzleFlash: { value: 0.0 },
+    uMuzzlePos: MUZZLE_LIGHT_UNIFORMS.uMuzzlePos,
+    uMuzzleInfo: MUZZLE_LIGHT_UNIFORMS.uMuzzleInfo,
   };
   mat.userData.bakedUniforms = uniforms;
-  mat.customProgramCacheKey = () => 'baked-lit-basic-v2';
+  mat.customProgramCacheKey = () => `baked-lit-basic-v10b-${Math.round(muzzleRadius)}`;
 
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uSunDir = uniforms.uSunDir;
     shader.uniforms.uProbeTint = uniforms.uProbeTint;
     shader.uniforms.uLightParams = uniforms.uLightParams;
     shader.uniforms.uMuzzleFlash = uniforms.uMuzzleFlash;
+    shader.uniforms.uMuzzlePos = uniforms.uMuzzlePos;
+    shader.uniforms.uMuzzleInfo = uniforms.uMuzzleInfo;
 
     shader.vertexShader = shader.vertexShader
       .replace(
@@ -56,7 +147,17 @@ uniform vec3 uSunDir;
 uniform vec3 uProbeTint;
 uniform vec4 uLightParams;
 uniform float uMuzzleFlash;
-varying vec3 vBakedShade;`
+varying vec3 vBakedShade;
+varying vec3 vMuzzleWorldPos;`
+      )
+      .replace(
+        '#include <project_vertex>',
+        `#include <project_vertex>
+vec4 mWPos = vec4( transformed, 1.0 );
+#ifdef USE_INSTANCING
+  mWPos = instanceMatrix * mWPos;
+#endif
+vMuzzleWorldPos = ( modelMatrix * mWPos ).xyz;`
       )
       .replace(
         '#include <worldpos_vertex>',
@@ -77,21 +178,28 @@ if ( uLightParams.w > 0.001 ) {
   vec3 halfV = normalize( vec3( 0.35, 0.72, 0.60 ) );
   bSpec = pow( max( 0.0, dot( vNorm, halfV ) ), 22.0 ) * uLightParams.w;
 }
-vec3 bSunCol = vec3( 1.15, 0.96, 0.74 ) * ( bNdl * uLightParams.z );
-vec3 bSkyCol = vec3( 0.80, 0.88, 1.02 ) * ( bHemi * uLightParams.y );
-vec3 bShadeCol = vec3( uLightParams.x ) + bSkyCol + bSunCol + vec3( bSpec * 1.10, bSpec * 0.95, bSpec * 0.78 );
-vBakedShade = uProbeTint * bShadeCol + vec3( 0.36, 0.24, 0.10 ) * uMuzzleFlash;`
+vec3 bSunCol = vec3( 1.16, 0.94, 0.70 ) * ( bNdl * uLightParams.z );
+vec3 bSkyCol = vec3( 0.78, 0.86, 1.02 ) * ( bHemi * uLightParams.y );
+vec3 bBounceCol = vec3( 0.96, 0.85, 0.70 ) * ( ( 1.0 - bHemi ) * 0.09 );
+vec3 bShadeCol = vec3( uLightParams.x ) + bSkyCol + bBounceCol + bSunCol + vec3( bSpec * 1.12, bSpec * 0.94, bSpec * 0.74 );
+vBakedShade = uProbeTint * bShadeCol + vec3( 1.10, 0.84, 0.24 ) * uMuzzleFlash;`
       );
 
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
         `#include <common>
-varying vec3 vBakedShade;`
+uniform vec3 uMuzzlePos;
+uniform vec4 uMuzzleInfo;
+varying vec3 vBakedShade;
+varying vec3 vMuzzleWorldPos;`
       )
       .replace(
         'vec3 outgoingLight = reflectedLight.indirectDiffuse;',
-        `vec3 outgoingLight = reflectedLight.indirectDiffuse * vBakedShade;`
+        `float mDist = length( vMuzzleWorldPos - uMuzzlePos );
+float mAtten = max( 0.0, 1.0 - smoothstep( 0.0, ${muzzleRadius.toFixed(1)}, mDist ) );
+vec3 mFlashGlow = uMuzzleInfo.rgb * ( mAtten * mAtten * uMuzzleInfo.w * 2.70 );
+vec3 outgoingLight = reflectedLight.indirectDiffuse * ( vBakedShade + mFlashGlow );`
       );
   };
 
@@ -106,12 +214,12 @@ export class LightProbeGrid {
     this.nx = 0;
     this.ny = 0;
     this.nz = 0;
-    this.minX = -26;
-    this.minY = 0;
-    this.minZ = -44;
-    this.maxX = 26;
-    this.maxY = 18;
-    this.maxZ = 40;
+    this.minX = -68;
+    this.minY = -2;
+    this.minZ = -68;
+    this.maxX = 68;
+    this.maxY = 26;
+    this.maxZ = 68;
     this.data = null;
   }
 
@@ -134,7 +242,7 @@ export class LightProbeGrid {
     return true;
   }
 
-  sample(x, y, z, outTint = null, minVis = 0.44) {
+  sample(x, y, z, outTint = null, minVis = 0.46) {
     if (!this.data || this.nx < 2) {
       if (outTint) outTint.set(1, 1, 1);
       return 1.0;
